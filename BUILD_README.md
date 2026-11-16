@@ -135,6 +135,36 @@ cmake --build build-linux-aarch64 --parallel 4
 | `AQ_HOST_VST3` | `ON` | Include the module that loads external VST3 plugins |
 | `AQ_JUCE_DIR` | `./JUCE` | Location of the JUCE checkout |
 
+## Stripped plugins: one LV2 per patch (proof of concept)
+
+A stripped plugin contains the engine and only the modules one patch uses. It has no editor window and starts with that patch loaded, so it shows up in a host as its own small instrument or effect. Design the patch in the full app, save it with Export Patch as an `.aqua` file, then:
+
+```bash
+./build_stripped.sh --name "My Bass" --patch ~/patches/MyBass.aqua
+```
+
+For an effect (audio in → audio out), add `--fx`:
+
+```bash
+./build_stripped.sh --name "My Echo" --patch ~/patches/MyEcho.aqua --fx
+```
+
+Without `--patch` it uses the app's Init patch, which is a quick way to test the mechanism:
+
+```bash
+./build_stripped.sh --name "Aqua Init"
+```
+
+The result is `dist-linux-aarch64/<name>.lv2`. Add `--install` to copy it to `~/.lv2` too.
+
+How it works and what to know:
+
+- The full build must exist first (`./build_aquanode.sh`). A stripped plugin compiles only the engine and takes the code of its modules out of the full build's library, so it builds in minutes.
+- `tools/make_stripped.py` reads the patch and writes a module list naming only the modules in it; the linker then leaves everything else out.
+- There is no window. Control it from the host through the 24 "DAW Mod" parameters: wire DAW Mod modules to the knobs you want to reach before exporting the patch.
+- Supported so far: the building-block modules (oscillators, filters, effects, utilities). Patches that use the built-in plugins (Vita, the DX7, Massif and so on) are refused with a message.
+- The only changes to original source files are three `#if AQUANODE_STRIPPED` switches in `Source/Engine/PluginProcessor.h` and `.cpp`; the normal build is unaffected by them.
+
 ## Results
 
 Everything is collected in `dist-linux-aarch64/`:

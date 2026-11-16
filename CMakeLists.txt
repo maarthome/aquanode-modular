@@ -51,6 +51,7 @@ set(AQ_JUCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/JUCE" CACHE PATH "Path to a JUCE ch
 option(AQ_BUILD_FX   "Also build the effect version, Aquanode Modular FX"        OFF)
 option(AQ_BUILD_VST3 "Also build VST3 plugins, next to the standalone app and LV2" OFF)
 option(AQ_HOST_VST3  "Include the module that loads external VST3 plugins"        ON)
+set(AQ_STRIPPED_DIR "" CACHE PATH "Folder written by tools/make_stripped.py: also build that stripped plugin")
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
@@ -116,6 +117,43 @@ list(GET AQ_VERSION_PARTS 1 AQ_V1)
 list(GET AQ_VERSION_PARTS 2 AQ_V2)
 math(EXPR AQ_VERSION_HEX "(${AQ_V0} << 16) + (${AQ_V1} << 8) + ${AQ_V2}" OUTPUT_FORMAT HEXADECIMAL)
 
+# Settings taken over from the Projucer project, plus what Linux needs.
+set(AQ_COMMON_DEFINITIONS
+    JUCE_STRICT_REFCOUNTEDPOINTER=1
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_USE_MP3AUDIOFORMAT=1
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_ALSA=1
+    JUCE_JACK=1)
+if(AQ_HOST_VST3)
+    list(APPEND AQ_COMMON_DEFINITIONS JUCE_PLUGINHOST_VST3=1)
+endif()
+
+set(AQ_LINK_MODULES
+    AquanodeBinaryData
+    juce::juce_animation
+    juce::juce_audio_basics
+    juce::juce_audio_devices
+    juce::juce_audio_formats
+    juce::juce_audio_plugin_client
+    juce::juce_audio_processors
+    juce::juce_audio_processors_headless
+    juce::juce_audio_utils
+    juce::juce_box2d
+    juce::juce_core
+    juce::juce_data_structures
+    juce::juce_dsp
+    juce::juce_events
+    juce::juce_graphics
+    juce::juce_gui_basics
+    juce::juce_gui_extra
+    juce::juce_javascript
+    juce::juce_midi_ci
+    juce::juce_opengl
+    juce::juce_osc
+    juce::juce_video)
+
 # aq_add_plugin(<target> <product name> <4-char code> <lv2 uri> <synth?> <formats...>)
 function(aq_add_plugin target product code uri is_synth)
     set(formats ${ARGN})
@@ -148,17 +186,7 @@ function(aq_add_plugin target product code uri is_synth)
     target_sources(${target} PRIVATE ${AQ_SOURCES})
     target_include_directories(${target} PRIVATE "${AQ_GENERATED}/${target}")
 
-    target_compile_definitions(${target} PUBLIC
-        JUCE_STRICT_REFCOUNTEDPOINTER=1
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_USE_MP3AUDIOFORMAT=1
-        JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0
-        JUCE_ALSA=1
-        JUCE_JACK=1)
-    if(AQ_HOST_VST3)
-        target_compile_definitions(${target} PUBLIC JUCE_PLUGINHOST_VST3=1)
-    endif()
+    target_compile_definitions(${target} PUBLIC ${AQ_COMMON_DEFINITIONS})
     if(NOT is_synth)
         target_compile_definitions(${target} PUBLIC AQUANODE_FX_BUILD=1)
     endif()
@@ -168,28 +196,7 @@ function(aq_add_plugin target product code uri is_synth)
 
     target_link_libraries(${target}
         PRIVATE
-            AquanodeBinaryData
-            juce::juce_animation
-            juce::juce_audio_basics
-            juce::juce_audio_devices
-            juce::juce_audio_formats
-            juce::juce_audio_plugin_client
-            juce::juce_audio_processors
-            juce::juce_audio_processors_headless
-            juce::juce_audio_utils
-            juce::juce_box2d
-            juce::juce_core
-            juce::juce_data_structures
-            juce::juce_dsp
-            juce::juce_events
-            juce::juce_graphics
-            juce::juce_gui_basics
-            juce::juce_gui_extra
-            juce::juce_javascript
-            juce::juce_midi_ci
-            juce::juce_opengl
-            juce::juce_osc
-            juce::juce_video
+            ${AQ_LINK_MODULES}
         PUBLIC
             juce::juce_recommended_config_flags)
 endfunction()
@@ -200,4 +207,65 @@ aq_add_plugin(AquanodeModular "Aquanode Modular" Aqmo
 if(AQ_BUILD_FX)
     aq_add_plugin(AquanodeModularFX "Aquanode Modular FX" Aqfx
         "https://github.com/aquanodemusic/aquanode-modular-fx" FALSE LV2)
+endif()
+
+# ── Stripped plugin: the engine plus only the modules one patch uses, no editor window ────
+# Driven by ./build_stripped.sh. tools/make_stripped.py writes AQ_STRIPPED_DIR.
+#
+# Only the engine is compiled here (with AQUANODE_STRIPPED=1). The modules come out of the
+# full build's library: the generated registry names the wanted modules, and the linker
+# takes just those objects, and what they need, from libAquanode Modular_SharedCode.a.
+if(AQ_STRIPPED_DIR)
+    include("${AQ_STRIPPED_DIR}/stripped.cmake")
+    string(MAKE_C_IDENTIFIER "AquanodeStripped_${AQS_SLUG}" AQS_TARGET)
+
+    if(AQS_IS_FX)
+        set(aqs_kind IS_SYNTH FALSE NEEDS_MIDI_INPUT TRUE NEEDS_MIDI_OUTPUT FALSE)
+    else()
+        set(aqs_kind IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE NEEDS_MIDI_OUTPUT TRUE)
+    endif()
+
+    juce_add_plugin(${AQS_TARGET}
+        PRODUCT_NAME             "${AQS_NAME}"
+        VERSION                  "${AQ_VERSION}"
+        COMPANY_NAME             "aquanodemusic"
+        PLUGIN_MANUFACTURER_CODE Aqnd
+        PLUGIN_CODE              ${AQS_CODE}
+        LV2URI                   "https://github.com/maarthome/aquanode-modular/stripped/${AQS_SLUG}"
+        FORMATS                  LV2
+        ${aqs_kind}
+        COPY_PLUGIN_AFTER_BUILD  FALSE)
+
+    set(AQ_PRODUCT_NAME "${AQS_NAME}")
+    configure_file("${AQ_GENERATED}/JuceHeader.h.in" "${AQ_GENERATED}/${AQS_TARGET}/JuceHeader.h" @ONLY)
+
+    list(TRANSFORM AQS_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
+    target_sources(${AQS_TARGET} PRIVATE
+        ${AQS_SOURCES}
+        "${AQ_STRIPPED_DIR}/StrippedRegistry.cpp"
+        "${AQ_STRIPPED_DIR}/StrippedStart.cpp")
+    target_include_directories(${AQS_TARGET} PRIVATE
+        "${AQ_GENERATED}/${AQS_TARGET}"
+        "${CMAKE_CURRENT_SOURCE_DIR}")
+
+    # Same settings as the full build, so its library fits; plus the stripped switch.
+    target_compile_definitions(${AQS_TARGET} PUBLIC ${AQ_COMMON_DEFINITIONS} AQUANODE_STRIPPED=1)
+    if(AQS_IS_FX)
+        target_compile_definitions(${AQS_TARGET} PUBLIC AQUANODE_FX_BUILD=1)
+    endif()
+    target_compile_options(${AQS_TARGET} PRIVATE -w -ffunction-sections -fdata-sections)
+
+    target_link_libraries(${AQS_TARGET}
+        PRIVATE
+            ${AQ_LINK_MODULES}
+            "$<TARGET_FILE:AquanodeModular>"
+        PUBLIC
+            juce::juce_recommended_config_flags)
+    add_dependencies(${AQS_TARGET} AquanodeModular)
+    target_link_options(${AQS_TARGET}_LV2 PRIVATE -Wl,--gc-sections)
+
+    # fixed names for build_stripped.sh
+    add_custom_target(aq_stripped DEPENDS ${AQS_TARGET}_LV2)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/aq_stripped_artefacts.txt"
+        "${CMAKE_CURRENT_BINARY_DIR}/${AQS_TARGET}_artefacts/${CMAKE_BUILD_TYPE}/LV2\n")
 endif()

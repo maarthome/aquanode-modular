@@ -16,6 +16,10 @@
 
 using namespace aquanode;
 
+#if AQUANODE_STRIPPED   // maarthome fork: stripped builds start with a baked-in patch
+namespace aquanode::stripped { void loadStartPatch (AquanodeModularAudioProcessor&); }
+#endif
+
 //==============================================================================
 AquanodeModularAudioProcessor::AquanodeModularAudioProcessor()
     : AudioProcessor (BusesProperties()
@@ -56,6 +60,10 @@ AquanodeModularAudioProcessor::AquanodeModularAudioProcessor()
     // MTS-ESP: the client registers here, on the message thread; the audio
     // thread only asks once per block whether a master is there
     aquanode::tuning::refresh();
+
+   #if AQUANODE_STRIPPED
+    aquanode::stripped::loadStartPatch (*this);
+   #endif
 }
 
 AquanodeModularAudioProcessor::~AquanodeModularAudioProcessor() = default;
@@ -101,7 +109,11 @@ bool AquanodeModularAudioProcessor::isBusesLayoutSupported (const BusesLayout& l
 //==============================================================================
 juce::AudioProcessorEditor* AquanodeModularAudioProcessor::createEditor()
 {
+   #if AQUANODE_STRIPPED
+    return nullptr;
+   #else
     return new AquanodeModularAudioProcessorEditor (*this);
+   #endif
 }
 
 // This creates new instances of the plugin.

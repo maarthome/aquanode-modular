@@ -111,7 +111,11 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
+   #if AQUANODE_STRIPPED   // maarthome fork: stripped builds have no editor window
+    bool hasEditor() const override { return false; }
+   #else
     bool hasEditor() const override { return true; }
+   #endif
 
     const juce::String getName() const override { return "Aquanode Modular"; }
     bool acceptsMidi() const override { return true; }
