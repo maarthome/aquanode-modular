@@ -139,7 +139,7 @@ cmake --build build-linux-aarch64 --parallel 4
 
 A stripped plugin contains the engine and only the modules one patch uses, and starts with that patch loaded, so it shows up in a host as its own small instrument or effect.
 
-Its window shows the patch with all its knobs. The patch is fixed: the module list starts closed and holds only the patch's own modules, and the Random Preset, Quick-Add Effects and Plugins sections are empty, because the code behind them is left out.
+Its window shows the patch with all its knobs. The patch is fixed: the module list starts closed and holds only the patch's own modules, and the Random Preset and Quick-Add Effects sections are empty, because the code behind them is left out. The Plugins section is empty too, unless the patch uses a built-in plugin: then it lists all of them by name, but only the ones in the patch are really there.
 
 1. Design the patch in the full app and save it with Export Patch as an `.aqua` file.
 2. Copy the file into the folder `patches_2_build/`.
@@ -176,7 +176,7 @@ How it works and what to know:
 - The full build must exist first (`./build_aquanode.sh`). A stripped plugin compiles only the engine and takes the code of its modules out of the full build's library, so it builds in minutes.
 - Nothing of the full build is changed, recompiled or removed. Stripped plugins have their own project (`stripped/CMakeLists.txt`) and their own build folder (`build-stripped-aarch64/`), and no original source file is edited.
 - `tools/make_stripped.py` reads the patch and writes a module list naming only the modules in it; the linker then leaves everything else out.
-- Supported so far: the building-block modules (oscillators, filters, effects, utilities). Patches that use the built-in plugins (Vita, the DX7, Massif and so on) are refused with a message.
+- Supported: the building-block modules (oscillators, filters, effects, utilities) and the 41 built-in synths and effects (Vita, the DX7, Massif, Tidebreeze and so on), as their cards and as their patch versions. A built-in plugin comes in whole, so a patch with Vita gives a larger plugin than one made of building blocks. Not supported: the Fruit DAW workspace, a nested Aquanode Modular, and external VST3 plugins.
 - Host parameters: JUCE's LV2 format publishes parameters as LV2 "patch parameters", not as control ports. Hosts that only list control ports, such as the Zynthian's parameter screens, show no parameters; this is the same for the full plugin. Use the plugin's window there.
 
 ## Results

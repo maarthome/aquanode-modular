@@ -18,11 +18,14 @@ ENGINE_SKIP = {"Source/Engine/PatchRender.cpp"}
 ALWAYS_TYPES = {"io.audioIn", "io.audioOut"}
 INIT_TYPES = {False: {"osc.basic", "util.polysum", "io.audioOut"},
               True: {"io.audioIn", "io.audioOut"}}
-WINDOW_STUBS = "stripped/FixedPatchStubs.cpp"
+NO_PRESETS_STUBS = "stripped/NoPresetsStubs.cpp"
+NO_PLUGINS_STUBS = "stripped/NoPluginsStubs.cpp"
+DX7_PLUGIN = "virtualdx7"   # its code already contains the MTS client that MTS_CLIENT provides
 PROCESSOR = "Source/Engine/PluginProcessor.cpp"
 MTS_CLIENT = "Source/PluginSources/virtualdx7/Source/External/MTS-ESP/libMTSClient.cpp"
 
 REGISTER = re.compile(r"^\s*AQUANODE_REGISTER_MODULE\s*\(\s*(\w+)\s*,", re.M)
+DEFINE_PLUGIN = re.compile(r'^\s*AQP_DEFINE_PLUGIN\s*\(\s*(\w+)\s*,\s*"([^"]+)"', re.M)
 TYPE_LITERAL = re.compile(r'typeId\s*=\s*"([^"]+)"')
 INCLUDE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.M)
 
@@ -93,29 +96,50 @@ def main():
             for t in TYPE_LITERAL.findall(text):
                 provides.setdefault(t, f)
 
+    # The built-in synths and effects (Vita, the DX7, ...): plugin id -> the class of its
+    # card. One reference to that class brings in the plugin's whole object file, and
+    # with it the card ("plugin.<id>") and its patch modules ("plugin.<id>.<kind>").
+    plugin_class = {}
+    for f in sources:
+        if f.startswith("Source/Plugins/") and not f.startswith("Source/Plugins/Host/"):
+            for cls, pid in DEFINE_PLUGIN.findall(read(f)):
+                plugin_class[pid] = cls
+
     wanted = set(ALWAYS_TYPES)
     wanted |= patch_types(args.patch) if args.patch else INIT_TYPES[args.fx]
     if args.window:
         wanted |= INIT_TYPES[args.fx]   # the window's Initialize Patch button builds this patch
 
-    unknown = sorted(t for t in wanted if t not in provides)
-    if unknown:
-        die("these module types are not supported in stripped builds yet "
-            "(built-in plugins such as Vita, and modules without a fixed type name):\n  "
-            + "\n  ".join(unknown))
+    plugins_used = set()
+    for t in wanted:
+        if t.startswith("plugin.") and t not in provides:
+            pid = t.split(".")[1]
+            if pid in plugin_class:
+                plugins_used.add(pid)
 
-    chosen = {provides[t] for t in wanted}
+    def supported(t):
+        return t in provides or (t.startswith("plugin.") and t.split(".")[1] in plugins_used)
+
+    unknown = sorted(t for t in wanted if not supported(t))
+    if unknown:
+        die("these module types are not supported in stripped builds yet:\n  " + "\n  ".join(unknown))
+
+    chosen = {provides[t] for t in wanted if t in provides}
 
     engine = [s for s in sources if s.startswith("Source/Engine/") and s not in ENGINE_SKIP and s != PROCESSOR]
     core = ["Source/Modules/Core/ModuleCore.cpp"]
     # Only the engine is compiled for a stripped plugin. The module code comes out of the
     # library of the full build: the registry below names the wanted modules, and the
     # linker takes just those modules, and whatever they in turn need, from that library.
-    all_sources = engine + core + [MTS_CLIENT]
+    all_sources = engine + core
+    if DX7_PLUGIN not in plugins_used:
+        all_sources.append(MTS_CLIENT)
     if args.window:
-        all_sources.append(WINDOW_STUBS)
+        all_sources.append(NO_PRESETS_STUBS)
+        if not plugins_used:
+            all_sources.append(NO_PLUGINS_STUBS)
 
-    reg_classes = sorted({c for f in chosen for c in classes[f]})
+    reg_classes = sorted({c for f in chosen for c in classes[f]} | {plugin_class[p] for p in plugins_used})
 
     os.makedirs(args.out, exist_ok=True)
 
@@ -196,7 +220,11 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
     print("Stripped plugin '%s' (%s, %s)" % (args.name, "effect" if args.fx else "instrument",
                                              "window showing the patch" if args.window else "no window"))
     print("  module types : " + ", ".join(sorted(wanted)))
-    print("  modules kept : %d of %d registered classes" % (len(reg_classes), sum(len(c) for c in classes.values())))
+    if plugins_used:
+        print("  built-in     : " + ", ".join(sorted(plugins_used)))
+    print("  modules kept : %d building blocks of %d, %d built-in plugins of %d"
+          % (len(reg_classes) - len(plugins_used), sum(len(c) for c in classes.values()),
+             len(plugins_used), len(plugin_class)))
 
 
 if __name__ == "__main__":
