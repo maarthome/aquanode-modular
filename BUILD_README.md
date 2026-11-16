@@ -167,6 +167,7 @@ The result is `dist-linux-aarch64/<patch name>.lv2`, added next to what is alrea
 |---|---|
 | `--fx` | Build an effect instead of an instrument |
 | `--no-window` | Leave out the editor window as well: the smallest plugin, controllable only through the 24 "DAW Mod" host parameters |
+| `--gl MODE` | OpenGL for the window: `driver` (default), `force33` (the Pi's driver offers 3.1; this tells it to offer 3.3, which Vita's interface asks for, keeping the GPU), or `software` (Mesa's software renderer, OpenGL 4.6 on the CPU, slower) |
 | `--install` | Copy the result to `~/.lv2` as well |
 | `--jobs N` | Parallel compile jobs (default 2) |
 | `--init` | No patch: build the app's Init patch as "Aqua Init", a quick test |

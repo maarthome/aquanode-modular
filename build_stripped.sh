@@ -12,6 +12,11 @@
 #   --fx            build an effect instead of an instrument
 #   --no-window     leave out the editor window too: smallest plugin, but then it can only
 #                   be controlled through the 24 "DAW Mod" host parameters
+#   --gl MODE       OpenGL for the window, when the host's screen cannot give what it
+#                   needs (Vita asks for 3.2; the Pi's driver offers 3.1):
+#                     driver    use the driver as is (default)
+#                     force33   tell the driver to offer OpenGL 3.3; keeps the GPU
+#                     software  Mesa's software renderer, OpenGL 4.6 but on the CPU
 #   --install       copy the result to ~/.lv2 as well
 #   --jobs N        parallel compile jobs (default 2)
 #   --init          no patch: build the app's Init patch as "Aqua Init" (a quick test)
@@ -30,6 +35,7 @@ NAME=""
 INIT=false
 FX=false
 WINDOW=true
+GL=driver
 INSTALL=false
 JOBS=2
 
@@ -37,10 +43,11 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --fx)       FX=true ;;
         --no-window) WINDOW=false ;;
+        --gl)       shift; GL="${1:?--gl needs driver, force33 or software}" ;;
         --install)  INSTALL=true ;;
         --init)     INIT=true ;;
         --jobs)     shift; JOBS="${1:?--jobs needs a number}" ;;
-        -h|--help)  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)  sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*)         echo "Unknown option: $1 (try --help)" >&2; exit 2 ;;
         *)          [ -z "$NAME" ] || { echo "Give one patch name (put names with spaces in quotes)" >&2; exit 2; }
                     NAME="${1%.aqua}" ;;
@@ -88,7 +95,7 @@ fi
 GEN_ARGS=(--out "$SPECS_DIR" --name "$NAME")
 [ -z "$PATCH" ] || GEN_ARGS+=(--patch "$PATCH")
 $FX && GEN_ARGS+=(--fx)
-$WINDOW && GEN_ARGS+=(--window)
+$WINDOW && GEN_ARGS+=(--window --gl "$GL")
 mkdir -p "$SPECS_DIR"
 python3 "$ROOT/tools/make_stripped.py" "${GEN_ARGS[@]}"
 
