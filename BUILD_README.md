@@ -163,7 +163,7 @@ How it works and what to know:
 - `tools/make_stripped.py` reads the patch and writes a module list naming only the modules in it; the linker then leaves everything else out.
 - There is no window. Control it from the host through the 24 "DAW Mod" parameters: wire DAW Mod modules to the knobs you want to reach before exporting the patch.
 - Supported so far: the building-block modules (oscillators, filters, effects, utilities). Patches that use the built-in plugins (Vita, the DX7, Massif and so on) are refused with a message.
-- The only changes to original source files are three `#if AQUANODE_STRIPPED` switches in `Source/Engine/PluginProcessor.h` and `.cpp`; the normal build is unaffected by them.
+- The only change to an original source file is two `#if AQUANODE_STRIPPED` switches in `Source/Engine/PluginProcessor.cpp`; the normal build is unaffected by them.
 
 ## Results
 
