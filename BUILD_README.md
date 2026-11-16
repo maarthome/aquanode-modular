@@ -139,6 +139,8 @@ cmake --build build-linux-aarch64 --parallel 4
 
 A stripped plugin contains the engine and only the modules one patch uses, and starts with that patch loaded, so it shows up in a host as its own small instrument or effect.
 
+Its window shows the patch with all its knobs. The patch is fixed: the module list starts closed and holds only the patch's own modules, and the Random Preset, Quick-Add Effects and Plugins sections are empty, because the code behind them is left out.
+
 1. Design the patch in the full app and save it with Export Patch as an `.aqua` file.
 2. Copy the file into the folder `patches_2_build/`.
 3. Build it by its name, without the `.aqua` ending. The plugin gets the name of the patch:

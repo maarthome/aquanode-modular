@@ -18,6 +18,7 @@ ENGINE_SKIP = {"Source/Engine/PatchRender.cpp"}
 ALWAYS_TYPES = {"io.audioIn", "io.audioOut"}
 INIT_TYPES = {False: {"osc.basic", "util.polysum", "io.audioOut"},
               True: {"io.audioIn", "io.audioOut"}}
+WINDOW_STUBS = "stripped/FixedPatchStubs.cpp"
 PROCESSOR = "Source/Engine/PluginProcessor.cpp"
 MTS_CLIENT = "Source/PluginSources/virtualdx7/Source/External/MTS-ESP/libMTSClient.cpp"
 
@@ -94,6 +95,8 @@ def main():
 
     wanted = set(ALWAYS_TYPES)
     wanted |= patch_types(args.patch) if args.patch else INIT_TYPES[args.fx]
+    if args.window:
+        wanted |= INIT_TYPES[args.fx]   # the window's Initialize Patch button builds this patch
 
     unknown = sorted(t for t in wanted if t not in provides)
     if unknown:
@@ -109,6 +112,8 @@ def main():
     # library of the full build: the registry below names the wanted modules, and the
     # linker takes just those modules, and whatever they in turn need, from that library.
     all_sources = engine + core + [MTS_CLIENT]
+    if args.window:
+        all_sources.append(WINDOW_STUBS)
 
     reg_classes = sorted({c for f in chosen for c in classes[f]})
 
@@ -146,7 +151,11 @@ namespace
 {
     struct StrippedProcessor final : AquanodeModularAudioProcessor
     {
-        StrippedProcessor()                                  { loadStartPatch (*this); }
+        StrippedProcessor()
+        {
+            loadStartPatch (*this);
+            uiSidebarVisible = false;   // the patch is fixed: start with the module list closed
+        }
 %s    };
 }
 
@@ -185,7 +194,7 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 
     write("name.txt", args.name + "\n")
     print("Stripped plugin '%s' (%s, %s)" % (args.name, "effect" if args.fx else "instrument",
-                                             "with editor window" if args.window else "no window"))
+                                             "window showing the patch" if args.window else "no window"))
     print("  module types : " + ", ".join(sorted(wanted)))
     print("  modules kept : %d of %d registered classes" % (len(reg_classes), sum(len(c) for c in classes.values())))
 
