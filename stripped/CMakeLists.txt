@@ -132,12 +132,14 @@ namespace ProjectInfo
     endif()
     target_compile_options(${target} PRIVATE -w -ffunction-sections -fdata-sections)
 
-    # The full build's library comes last: the linker takes from it only the objects that
-    # the generated registry (and what those objects need) refers to.
+    # The linker takes from the full build's library only the objects that the generated
+    # registry (and what those objects need) refers to. It has to come BEFORE the other
+    # libraries: the objects taken from it need BinaryData and the system libraries (ALSA
+    # and so on), and the linker only looks for those in libraries listed after it.
     target_link_libraries(${target}
         PRIVATE
-            ${AQ_LINK_MODULES}
             "${AQ_FULL_LIBRARY}"
+            ${AQ_LINK_MODULES}
         PUBLIC
             juce::juce_recommended_config_flags)
     target_link_options(${target}_LV2 PRIVATE -Wl,--gc-sections)
