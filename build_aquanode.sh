@@ -44,11 +44,20 @@ fi
 
 echo "== Creating temporary ${SWAP_GB} GB swap at $SWAP_FILE"
 SWAP_ON=true
-# dd instead of fallocate: swap files with holes are refused on some file systems.
-sudo dd if=/dev/zero of="$SWAP_FILE" bs=1M count=$((SWAP_GB * 1024)) status=progress
-sudo chmod 600 "$SWAP_FILE"
-sudo mkswap "$SWAP_FILE" >/dev/null
-sudo swapon "$SWAP_FILE"
+make_swap() {
+    sudo chmod 600 "$SWAP_FILE"
+    sudo mkswap "$SWAP_FILE" >/dev/null
+    sudo swapon "$SWAP_FILE"
+}
+# fallocate reserves the space at once (fine on ext4, the Pi's file system). Where the file
+# system refuses such a swap file, fall back to writing it out in full, which takes minutes.
+if ! { sudo fallocate -l "${SWAP_GB}G" "$SWAP_FILE" && make_swap; } 2>/dev/null; then
+    echo "   quick method not possible here, writing the file out instead"
+    sudo swapoff "$SWAP_FILE" 2>/dev/null || true
+    sudo rm -f "$SWAP_FILE"
+    sudo dd if=/dev/zero of="$SWAP_FILE" bs=1M count=$((SWAP_GB * 1024)) status=progress
+    make_swap
+fi
 free -h
 
 "$ROOT/build_pi.sh" --jobs "$(nproc)" "$@"
