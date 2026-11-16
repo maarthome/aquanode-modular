@@ -86,6 +86,20 @@ foreach(spec IN LISTS AQ_SPECS)
     include("${spec}")   # AQS_NAME, AQS_SLUG, AQS_CODE, AQS_IS_FX, AQS_SOURCES
     string(MAKE_C_IDENTIFIER "aqs_${AQS_SLUG}" target)
 
+    # A spec written by an older version of the scripts can name files that have since
+    # been renamed. Leave such a plugin out instead of failing the build of another one;
+    # running build_stripped.sh for it again writes a fresh spec.
+    set(spec_ok TRUE)
+    foreach(src IN LISTS AQS_SOURCES)
+        if(NOT EXISTS "${AQ_ROOT}/${src}")
+            set(spec_ok FALSE)
+        endif()
+    endforeach()
+    if(NOT spec_ok)
+        message(STATUS "Skipping stripped plugin '${AQS_NAME}': made with an older version, build it again to refresh it")
+        continue()
+    endif()
+
     if(AQS_IS_FX)
         set(kind IS_SYNTH FALSE NEEDS_MIDI_INPUT TRUE NEEDS_MIDI_OUTPUT FALSE)
     else()
