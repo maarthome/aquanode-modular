@@ -137,33 +137,45 @@ cmake --build build-linux-aarch64 --parallel 4
 
 ## Stripped plugins: one LV2 per patch (proof of concept)
 
-A stripped plugin contains the engine and only the modules one patch uses. It has no editor window and starts with that patch loaded, so it shows up in a host as its own small instrument or effect. Design the patch in the full app, save it with Export Patch as an `.aqua` file, then:
+A stripped plugin contains the engine and only the modules one patch uses, and starts with that patch loaded, so it shows up in a host as its own small instrument or effect.
+
+1. Design the patch in the full app and save it with Export Patch as an `.aqua` file.
+2. Copy the file into the folder `patches_2_build/`.
+3. Build it by its name, without the `.aqua` ending. The plugin gets the name of the patch:
 
 ```bash
-./build_stripped.sh --name "My Bass" --patch ~/patches/MyBass.aqua
+./build_stripped.sh MyBass
 ```
 
 For an effect (audio in → audio out), add `--fx`:
 
 ```bash
-./build_stripped.sh --name "My Echo" --patch ~/patches/MyEcho.aqua --fx
+./build_stripped.sh MyEcho --fx
 ```
 
-Without `--patch` it uses the app's Init patch, which is a quick way to test the mechanism:
+Without a name the script lists the patches it finds:
 
 ```bash
-./build_stripped.sh --name "Aqua Init"
+./build_stripped.sh
 ```
 
-The result is `dist-linux-aarch64/<name>.lv2`. Add `--install` to copy it to `~/.lv2` too.
+The result is `dist-linux-aarch64/<patch name>.lv2`, added next to what is already there.
+
+| Option | Effect |
+|---|---|
+| `--fx` | Build an effect instead of an instrument |
+| `--no-window` | Leave out the editor window as well: the smallest plugin, controllable only through the 24 "DAW Mod" host parameters |
+| `--install` | Copy the result to `~/.lv2` as well |
+| `--jobs N` | Parallel compile jobs (default 2) |
+| `--init` | No patch: build the app's Init patch as "Aqua Init", a quick test |
 
 How it works and what to know:
 
 - The full build must exist first (`./build_aquanode.sh`). A stripped plugin compiles only the engine and takes the code of its modules out of the full build's library, so it builds in minutes.
+- Nothing of the full build is changed, recompiled or removed. Stripped plugins have their own project (`stripped/CMakeLists.txt`) and their own build folder (`build-stripped-aarch64/`), and no original source file is edited.
 - `tools/make_stripped.py` reads the patch and writes a module list naming only the modules in it; the linker then leaves everything else out.
-- There is no window. Control it from the host through the 24 "DAW Mod" parameters: wire DAW Mod modules to the knobs you want to reach before exporting the patch.
 - Supported so far: the building-block modules (oscillators, filters, effects, utilities). Patches that use the built-in plugins (Vita, the DX7, Massif and so on) are refused with a message.
-- The only change to an original source file is two `#if AQUANODE_STRIPPED` switches in `Source/Engine/PluginProcessor.cpp`; the normal build is unaffected by them.
+- Host parameters: JUCE's LV2 format publishes parameters as LV2 "patch parameters", not as control ports. Hosts that only list control ports, such as the Zynthian's parameter screens, show no parameters; this is the same for the full plugin. Use the plugin's window there.
 
 ## Results
 

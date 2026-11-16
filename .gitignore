@@ -1,4 +1,5 @@
 /JUCE/
 /JUCE.partial/
 /build-linux-*/
+/build-stripped-*/
 __pycache__/

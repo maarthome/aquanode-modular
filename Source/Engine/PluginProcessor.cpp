@@ -101,17 +101,11 @@ bool AquanodeModularAudioProcessor::isBusesLayoutSupported (const BusesLayout& l
 //==============================================================================
 juce::AudioProcessorEditor* AquanodeModularAudioProcessor::createEditor()
 {
-   #if AQUANODE_STRIPPED   // maarthome fork: stripped builds have no editor (see build_stripped.sh)
-    return nullptr;
-   #else
     return new AquanodeModularAudioProcessorEditor (*this);
-   #endif
 }
 
-#if ! AQUANODE_STRIPPED   // a stripped build creates its own processor, in the generated StrippedStart.cpp
 // This creates new instances of the plugin.
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new AquanodeModularAudioProcessor();
 }
-#endif
