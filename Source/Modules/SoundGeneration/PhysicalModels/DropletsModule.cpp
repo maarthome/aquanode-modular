@@ -192,7 +192,7 @@ static ModuleDescriptor dropletsDescriptor()
         "pitch, chirp and decay follow real bubble acoustics, drip-clocked at Rate with "
         "per-drop stereo spread. The stream runs while a note is held or Gate In is high - a "
         "Clock or Euclid gate works; Env In wants an ADSR and otherwise the drips play at "
-        "full level and simply ring out when the stream stops. Midi In takes notes too (Keyboard Midi, Piano Roll...): each held note runs its own drip stream. "
+        "full level and simply ring out when the stream stops. MIDI In takes notes too (the played keys while nothing is patched, a Piano Roll...): each held note runs its own drip stream. "
         "Tune By Key drips at the pitch of the key played (a melodic rain; Size still sets how each drop rings), By Size at the drop's own pitch.";
     d.section = ModuleSection::Oscillator;
     d.sidebarOrder = 18;
@@ -200,7 +200,7 @@ static ModuleDescriptor dropletsDescriptor()
         modIn    ("gateIn", "Gate In"),
         modIn    ("envIn",  "Env In"),
         audioOut ("audioOut", "Audio Out"),
-        midiIn   ("midiIn",   "Midi In")
+        midiIn   ("midiIn",   "MIDI In")
     };
     d.params = {
         makeRotary ("size",    "Size",     0.15f, 20.0f, 5.0f, 0, "mm", true),
@@ -215,7 +215,8 @@ static ModuleDescriptor dropletsDescriptor()
         makeRotary ("density", "Density",  1.0f, (float) DropletsModule::kMaxDroplets, 16.0f, 2, {}, false, 1.0f),
         makeRotary ("voices",  "Voices",   1.0f, (float) kMaxVoices, (float) kMaxVoices, 2, {}, false, 1.0f).noMod(),
         // By Key: every drip at the pitch of the key played (a melodic rain); By Size: the drop's own pitch
-        makeCombo  ("tune",    "Tune",     { "By Size", "By Key" }, 1, 3, 2).whenMissing (0.0f)
+        makeCombo  ("tune",    "Tune",     { "By Size", "By Key" }, 1, 3, 2).whenMissing (0.0f),
+        makeOutputTrim (6.0f)   // 6.7.0: a drop is short; lifted to meet the other generators (applied on its cables by the engine)
     };
     return d;
 }

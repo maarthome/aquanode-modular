@@ -14,9 +14,13 @@
 #include "massif/GeneratorLevel.h"
 
 class AquaMassifProcessor : public juce::AudioProcessor,
+                            public aquanode::MpeReceiver,      // (Aquanode: MPE once a member channel plays)
                             private juce::Timer
 {
 public:
+    void enableMpe (bool on) override { mpeOn = on; }
+    void setSlideWavetableDepth (float eachWay) override { engine.slideDepth = eachWay; }   // (6.9.13)
+    bool mpeOn { false };
     AquaMassifProcessor();
     ~AquaMassifProcessor() override;
 

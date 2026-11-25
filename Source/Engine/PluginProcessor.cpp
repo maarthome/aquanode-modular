@@ -3,14 +3,15 @@
 // and MIDI), ProcessorPatch.cpp (modules and cables), ProcessorGraph.cpp (the
 // compiled graph), ProcessorState.cpp (saving and loading), ProcessorHistory.cpp
 // (undo / redo).
+#include "../Modules/Shared/AntiAlias.h"
 #include "PluginProcessor.h"
 #include "../Editor/PluginEditor.h"
 #include "../Modules/Core/ModuleRegistry.h"
-#include "../Modules/Utilities/MIDI/MidiAddModule.h"
 #include "../Modules/Utilities/MIDI/DiscardMidiModule.h"
 #include "../Modules/Utilities/Control/DawModModule.h"
 #include "../Modules/Utilities/MIDI/PianoRollModule.h"
 #include "PatchStateFiles.h"
+#include "../Plugins/Host/HostedPlugin.h"
 
 #include <algorithm>
 
@@ -41,6 +42,13 @@ AquanodeModularAudioProcessor::AquanodeModularAudioProcessor()
 
     rebuildGraph();   // publish an (empty) graph so processBlock is always valid
 
+    // Android: JUCE's empty permission / picker dialog kept invisible (StandaloneInput.cpp)
+    if (wrapperType == wrapperType_Standalone)
+    {
+        extern void aquanodeHideAndroidOverlays();
+        aquanodeHideAndroidOverlays();
+    }
+
     // MPE: as it was last switched (the app's settings)
     {
         juce::PropertiesFile::Options o;
@@ -51,18 +59,84 @@ AquanodeModularAudioProcessor::AquanodeModularAudioProcessor()
         o.storageFormat = juce::PropertiesFile::storeAsXML;
         juce::PropertiesFile file (o);
         mpeEnabled.store (file.getBoolValue ("mpe.enabled", false));
+        aquanode::antiAliasEnabled().store (file.getBoolValue ("audio.antialias", false));   // (6.9.21: CPU > Anti-alias)
+        // the plugins' block (the top bar's Plugin Block)
+        aquanode::plugins::HostedPluginModule::globalBlockSize().store (juce::jlimit (1, 512, file.getIntValue ("plugins.block", 128)));
+        // (6.9.11) lining up and reporting latency, for all patches
+        neverCompensate().store (file.getBoolValue ("latency.never", false));
+        reportLatency().store (file.getBoolValue ("latency.report", true));
     }
+
+    {
+        const juce::ScopedLock sl (liveProcessorsLock());
+        liveProcessors().push_back (this);
+    }
+    screenMidi.reserve (512);   // (the on-screen keys' messages of one block)
 
     // MTS-ESP: the client registers here, on the message thread; the audio
     // thread only asks once per block whether a master is there
     aquanode::tuning::refresh();
 }
 
-AquanodeModularAudioProcessor::~AquanodeModularAudioProcessor() = default;
+AquanodeModularAudioProcessor::~AquanodeModularAudioProcessor()
+{
+    const juce::ScopedLock sl (liveProcessorsLock());
+    auto& v = liveProcessors();
+    v.erase (std::remove (v.begin(), v.end(), this), v.end());
+}
+
+// every Aquanode alive in this process (the app, a DAW's instances, nested ones)
+juce::CriticalSection& AquanodeModularAudioProcessor::liveProcessorsLock()
+{
+    static juce::CriticalSection cs;
+    return cs;
+}
+
+std::vector<AquanodeModularAudioProcessor*>& AquanodeModularAudioProcessor::liveProcessors()
+{
+    static std::vector<AquanodeModularAudioProcessor*> v;
+    return v;
+}
+
+std::atomic<bool>& AquanodeModularAudioProcessor::neverCompensate()
+{
+    static std::atomic<bool> never { false };
+    return never;
+}
+
+std::atomic<bool>& AquanodeModularAudioProcessor::reportLatency()
+{
+    static std::atomic<bool> report { true };
+    return report;
+}
+
+// a setting for all patches moved (message thread): every Aquanode makes its graph again
+void AquanodeModularAudioProcessor::rebuildAllGraphs()
+{
+    std::vector<AquanodeModularAudioProcessor*> all;
+    {
+        const juce::ScopedLock sl (liveProcessorsLock());
+        all = liveProcessors();
+    }
+    for (auto* p : all)
+        p->rebuildGraph();
+}
 
 //==============================================================================
+bool aquanodeDeviceRestartKeepsState();   // (StandaloneInput.cpp)
+
 void AquanodeModularAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    // the standalone app opening or closing the microphone restarts the device
+    // at the same rate: nothing in the patch needs preparing again (tails ring
+    // on, held notes stay held)
+    if (aquanodeDeviceRestartKeepsState() && isPrepared && sampleRate == currentSampleRate)
+    {
+        if (inputScratch.getNumSamples() < samplesPerBlock)
+            inputScratch.setSize (2, juce::jmax (1, samplesPerBlock), false, false, true);
+        return;
+    }
+
     currentSampleRate = sampleRate;
     isPrepared = true;
     inputScratch.setSize (2, juce::jmax (1, samplesPerBlock));
@@ -71,14 +145,15 @@ void AquanodeModularAudioProcessor::prepareToPlay (double sampleRate, int sample
         inst->dsp->prepare (sampleRate);
     outputClipper.reset();
     latencyScratch.reserve (1024);
+    latencyInScratch.reserve (1024);
 
     for (auto& vs : voiceStates)
         vs = VoiceState();
     refreshActiveVoices();
 
     // the patch's latency (a graph built off the message thread could not report it yet)
-    if (getLatencySamples() != patchLatency.load (std::memory_order_relaxed))
-        setLatencySamples (patchLatency.load (std::memory_order_relaxed));
+    if (getLatencySamples() != reportedLatency (patchLatency.load (std::memory_order_relaxed)))
+        setLatencySamples (reportedLatency (patchLatency.load (std::memory_order_relaxed)));
 
     purgeRetired();
 }

@@ -150,7 +150,7 @@ public:
         d.section = ModuleSection::Oscillator;
         d.sockets = {
             modIn ("fmIn", "FM In"),
-            midiIn ("addMidiIn", "Add Midi In"),
+            midiIn ("addMidiIn", "Add MIDI In"),
             audioOut ("audioOut", "Audio Out")
         };
         d.params = {
@@ -166,7 +166,8 @@ public:
             makeRotary ("beat", "Beat", 0.0f, 1.0f, 0.3f, 2),
             makeRotary ("width", "Width", 0.0f, 1.0f, 0.5f, 2),
             makeRotary ("tune", "Tune", -50.0f, 50.0f, 0.0f, 2, "ct"),
-            makeRotary ("partials", "Partials", 8.0f, 64.0f, 48.0f, 2, {}, false, 1.0f).noMod()
+            makeRotary ("partials", "Partials", 8.0f, 64.0f, 48.0f, 2, {}, false, 1.0f).noMod(),
+            makeOutputTrim (5.0f)   // 6.7.0: up to the other pianos
         };
         return d;
     }
@@ -296,7 +297,7 @@ private:
         vc.B = std::exp (logB / juce::jmax (1.0e-6f, wsum));
         vc.key = key;
         vc.note = note;
-        vc.f0 = 440.0f * std::pow (2.0f, (key - 69.0f) / 12.0f + (cents + param (pTune)) / 1200.0f);
+        vc.f0 = (float) aquanode::midiNoteToHz ((double) key) * std::pow (2.0f, (cents + param (pTune)) / 1200.0f);   // (patch tuning, 6.9.10)
         const float nyq = (float) sampleRate * 0.45f;
         const float stretchB = vc.B * param (pStretch);
         K = juce::jmin (K, (int) param (pPartials));

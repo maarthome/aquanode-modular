@@ -106,6 +106,14 @@ namespace aquanode::plugins
     // from Audio In for the effects); returns its instance id or -1.
     int addGuiVersion (AquanodeModularAudioProcessor& patch, const juce::String& id, juce::Point<int> where);
 
+    // (6.9.17) a patch version in more than one kind (FM12: its engine with section cards, or two
+    // operator modules): registerPatchVersion gives the first, this the others. The Patch pills
+    // ask which when there is more than one; building uses patchKind() (0: the first).
+    bool registerPatchKind (const juce::String& id, const juce::String& firstName,
+                            const juce::String& name, PatchBuildFn build);
+    juce::StringArray patchKinds (const juce::String& id);   // every kind's name; empty: one kind only
+    int& patchKind();
+
     // Builds the patch version - from the plugin's default sound when file is
     // empty, else from that preset file - into the existing patch (replace =
     // false) or a cleared one. Returns the display name, empty on failure.
@@ -119,6 +127,22 @@ namespace aquanode::plugins
     // plays, holding the same sound and wired the same way; the card's
     // instance id, or -1.
     int openHeldPresetInPlugin (AquanodeModularAudioProcessor& patch, int instanceId);
+
+    // Plugin cards opened beside a module (the Random Preset Cloud's Open
+    // Preset / Open Position), each with a state: placed to its right, wired
+    // like it (its Audio Out's cables, its Midi In's) - or, where it plays
+    // into nothing, into Audio Out (made if missing). Returns the new cards.
+    std::vector<int> openPluginsBeside (AquanodeModularAudioProcessor& patch, int besideInstance,
+                                        const std::vector<std::pair<juce::String, juce::MemoryBlock>>& pluginsAndStates);
+
+    // Extra content (a card's own component) that changes the patch: the card
+    // sets requestPatchEdit; what it is given runs on the message thread with
+    // the patch and the card's module, then the patch area is rebuilt.
+    struct PatchEditRequester
+    {
+        virtual ~PatchEditRequester() = default;
+        std::function<void (std::function<void (AquanodeModularAudioProcessor&, int instanceId)>)> requestPatchEdit;
+    };
 }
 
 //==============================================================================

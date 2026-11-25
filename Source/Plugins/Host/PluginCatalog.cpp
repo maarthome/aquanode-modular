@@ -88,11 +88,16 @@ namespace
               0xff35a8c9, ModuleSection::Oscillator, true, false, false, false, 1100, 620, "*.tidebreeze" },
 
             { "covegroove", "Cove Groove",
-              "The hardgroove loop generator: eight synthesized drum lanes (kick, offbeat bass, clap, hats, cymbal, "
-              "conga / tom, FX) in patterns of up to four bars that GENERATE writes in a style - or you by hand - with "
-              "swing, a top bus with a subtle phaser and a moving band-pass, a dotted delay and a master drive. Plays with "
-              "the DAW's transport, or on RUN at its own tempo; keys from C2 play the lanes.",
-              0xff1ad6ec, ModuleSection::Oscillator, true, false, false, false, 1100, 620, "*.covegroove" },
+              "The hardgroove loop generator: eight drum lanes (kick, offbeat bass, clap, hats, cymbal, conga / tom, FX) "
+              "in patterns of up to four bars that GENERATE writes in a style - or you by hand - with swing, a dotted "
+              "delay and a master drive. TOP on a lane sends it through the top bus - a subtle phaser and a band-pass "
+              "moving with the bars - before the drive; lanes without TOP go to the drive dry. Every lane has synthesized "
+              "sounds, the classic boxes, physically modelled kits (808, 909, Classic, Electro, Large Drums, Metal, "
+              "Orchestral, World) and your own samples (+ beside the lane's name loads one). The row above the steps "
+              "shows a lane's sound up close with its loudness over time; on a modelled kit it picks any of the kit's "
+              "sounds and moves the model's own knobs. Plays with the DAW's transport, or on RUN at its own tempo; keys "
+              "from C2 play the lanes.",
+              0xff1ad6ec, ModuleSection::Oscillator, true, false, false, false, 1100, 700, "*.covegroove" },
 
             { "virtualdx7", "VirtualDX7",
               "The six-operator FM synth with both of its engines: the native engine, and the bit-accurate "
@@ -115,18 +120,26 @@ namespace
 
             { "noteadder", "NoteAdder",
               "Adds notes around the ones you play - manual, scale and custom modes, animation, humanize "
-              "and decay. Its Midi Out plays whatever is patched to it; Audio Out is its Audit sine.",
+              "and decay. Its MIDI Out plays whatever is patched to it; Audio Out is its Audit sine.",
               0xff9ccc65, ModuleSection::Utility, true, true, false, false, 560, 592, "*.nastate" },
 
             { "soundscape", "Soundscape Ecology",
               "The procedural nature synth: three slots of Biophony, Geophony and Anthrophony models with "
-              "weather, time of day and stereo placement. Midi In plays it in its MIDI modes.",
+              "weather, time of day and stereo placement. MIDI In plays it in its MIDI modes.",
               0xff6abf69, ModuleSection::Oscillator, true, false, false, false, 1200, 700, "*.xml" },
 
             { "slicer", "Slicer",
               "The drum slicer: load a loop (or anything), it finds the hits and lays one slice on each key "
               "from C1 up, with reverse, loop, mono and B0's random stream. Its 'presets' are audio files.",
               0xffe58a4e, ModuleSection::Oscillator, true, false, false, false, 800, 450,
+              "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3" },
+
+            { "granulate", "Granulate",
+              "The granulator on a sample: up to many grains at once, each with its own envelope, from a "
+              "position you set (or click on the waveform), sprayed around it within a window, some of them "
+              "reversed, with a note envelope, amplitude modulation, pitch dispersion and stereo spread. Its "
+              "'presets' are audio files - any file can be read as raw audio too.",
+              0xff7fb2ff, ModuleSection::Oscillator, true, false, false, false, 770, 420,
               "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3" },
 
             { "combweave", "CombWeave",
@@ -193,7 +206,7 @@ namespace
 
             { "aquanode", "Aquanode Modular",
               "Aquanode Modular itself on one card: a whole patch of its own, with its sidebar, keys, Mutator and Render, "
-              "saved inside the card. Audio In feeds its Audio In modules and Midi In (or the keys) plays it - a patch "
+              "saved inside the card. Audio In feeds its Audio In modules and MIDI In (or the keys) plays it - a patch "
               "inside the patch. One can hold another, one level deep.",
               0xff38b6d8, ModuleSection::Oscillator, true, false, true, false, 1200, 760, "" },
 
@@ -203,7 +216,7 @@ namespace
               0xff7fd1c9, ModuleSection::Effect, false, false, true, false, 760, 400, "" },
 
             { "alphabetafx", "AlphaBetaFX",
-              "AlphaBeta's drive, liquid filter (with its envelope, on the input level or on Midi In) and "
+              "AlphaBeta's drive, liquid filter (with its envelope, on the input level or on MIDI In) and "
               "chorus as an effect, in both models: Native and Original.",
               0xff8ec9e8, ModuleSection::Effect, true, false, true, false, 900, 240, "" },
 
@@ -225,7 +238,7 @@ namespace
             { "fullfilter", "FullFilter",
               "Up to 128 bell filters on the harmonics of the played note - an EQ in the shape of a "
               "sawtooth - up to twelve notes at once, with bar editors for every bell, acoustic shapes and "
-              "wavetable import. Midi In plays it.",
+              "wavetable import. MIDI In plays it.",
               0xffff8a00, ModuleSection::Effect, true, false, true, false, 900, 500, "" },
 
             { "precisionutility", "PrecisionUtility",
@@ -238,7 +251,7 @@ namespace
               "The seven-voice tuned resonator with its four engines (Modelled, Native, Crisp, Dark): "
               "resonator I sets the pitch, the others are tuned around it in semitones, each with its own "
               "decay, colour, gain and pan; filter, width, Full / Odd shape, Const decay and dry / wet. "
-              "Notes on Midi In retune it. Loads its .xml presets.",
+              "Notes on MIDI In retune it. Loads its .xml presets.",
               0xff3fc9a8, ModuleSection::Effect, true, false, true, false, 900, 560, "*.xml" },
 
             { "springer", "Springer",
@@ -246,6 +259,12 @@ namespace
               "stages), density smearing, damping and feedback, from dub-style springiness to phasing laser sounds. "
               "Coil Scale sets each coil's length, Pitch makes the coils thicker and deeper.",
               0xff00c3cd, ModuleSection::Effect, false, false, true, false, 650, 480, "" },
+
+            { "granulatefx", "Granulate FX",
+              "Granulate on live audio: the incoming sound runs through a ring buffer of the length you set, "
+              "and grains are taken from it - number, size, position, spray, window, reversed grains, each "
+              "grain's envelope, amplitude modulation, pitch dispersion and stereo spread.",
+              0xff7fb2ff, ModuleSection::Effect, false, false, true, false, 770, 420, "" },
 
             { "phorest", "Phorest",
               "The deep phaser: up to 48 allpass stages swept by seven LFO shapes (or by hand), with feedback, "
@@ -266,7 +285,7 @@ namespace
               "AutoMorph Bandpass Modulator: a band-pass that jumps around a frequency range in time with the song - "
               "to random places by default, from a fixed seeded generator, so the same bar always moves the same way - "
               "or along sine, triangle, saw and step shapes; Skew pushes the jumps back and forth in time. Note Lock keeps "
-              "it on chosen notes or on the notes held on Midi In; distortion, a tempo echo and autopan on the band.",
+              "it on chosen notes or on the notes held on MIDI In; distortion, a tempo echo and autopan on the band.",
               0xff2fd1c0, ModuleSection::Effect, true, false, true, false, 990, 700, "" },
 
             { "spectralcompress", "SpectralCompress",
@@ -275,6 +294,20 @@ namespace
               "and overlap. Side In can drive the bins instead of the input.",
               0xff4fc3a1, ModuleSection::Effect, false, false, true, true, 1240, 780, "", false, "Side In" },
 
+            { "vitafx", "Vita FX",
+              "Vita's effects rack on its own, for any sound: Audio In runs through the chorus, compressor, delay, "
+              "distortion, equalizer, filter, flanger, phaser and reverb in the order you drag them to, with Vita's own "
+              "panel for them (only the effects page). Loads .vital presets (their effects); MIDI In still plays "
+              "Vita's voices into the same chain.",
+              0xff7b8cde, ModuleSection::Effect, true, false, true, false, 1260, 738, "*.vital", true },
+
+            { "spectralfilter", "SpectralFilter",
+              "A spectral processor you draw: the input's spectrum shown live, and per FFT bin (20 Hz - 20 kHz) a gain "
+              "curve (+-24 dB), a phase curve, a frequency shift and a pan, each with its own Strength, Shift and Auto "
+              "scrolling (bins per second), a global shift with Wrap, a Frequency Window that limits where it all acts, "
+              "Wet Only to hear the change alone, FFT Size 1024-8192, and Export IR to save the curves as an impulse response.",
+              0xff5fd0a8, ModuleSection::Effect, false, false, true, false, 860, 700, "", false },
+
             { "spectralstereoize", "SpectralStereoize",
               "Mid/side width per FFT bin: draw how wide each frequency should be, from mono to extra wide, on a "
               "butterfly plot of the output (green) and of Side In (pink) as a reference. Bit for bit transparent "
@@ -282,8 +315,10 @@ namespace
               0xff6fdc8c, ModuleSection::Effect, false, false, true, true, 960, 540, "", false, "Side In" },
 
             { "spectralcompare", "SpectralCompare",
-              "Two spectrograms over each other: the sound on Audio In and the one on Side In, to see where they "
-              "clash. Audio passes through unchanged.",
+              "Two spectra over each other - the sound on Audio In and the one on Side In - to see where they clash, "
+              "and a morph between them: Morph blends the input's spectrum toward the side's, Clarity how cleanly, "
+              "each with its own smoothing speed; Hear Delta Only plays only their difference, and a gate and an "
+              "enhancer work on chosen bins.",
               0xffd96fb8, ModuleSection::Effect, false, false, true, true, 1220, 660, "", false, "Side In" },
 
             { "ecosee", "EcoSee",
@@ -310,6 +345,23 @@ namespace
     }
 
     struct PendingPatch { PatchBuildFn build; PresetLoadFn load; };
+
+    // (6.9.17) the further kinds of a patch version
+    struct PatchKinds { juce::String firstName; std::vector<std::pair<juce::String, PatchBuildFn>> more; };
+    std::map<juce::String, PatchKinds>& patchKindsById()
+    {
+        static std::map<juce::String, PatchKinds> m;
+        return m;
+    }
+    // the builder of the kind asked for (patchKind()), else the plugin's own
+    const PatchBuildFn& builderFor (const CatalogEntry& e)
+    {
+        const int k = patchKind();
+        if (k > 0)
+            if (auto it = patchKindsById().find (e.id); it != patchKindsById().end() && k - 1 < (int) it->second.more.size())
+                return it->second.more[(size_t) (k - 1)].second;
+        return e.buildPatch;
+    }
     std::map<juce::String, PendingPatch>& pendingPatchVersions()
     {
         static std::map<juce::String, PendingPatch> m;
@@ -408,6 +460,31 @@ const AudioAccess* audioAccessFor (const juce::String& id)
 {
     auto it = audioAccessors().find (id);
     return it != audioAccessors().end() ? &it->second : nullptr;
+}
+
+bool registerPatchKind (const juce::String& id, const juce::String& firstName, const juce::String& name, PatchBuildFn build)
+{
+    auto& k = patchKindsById()[id];
+    k.firstName = firstName;
+    k.more.push_back ({ name, std::move (build) });
+    return true;
+}
+
+juce::StringArray patchKinds (const juce::String& id)
+{
+    juce::StringArray names;
+    if (auto it = patchKindsById().find (id); it != patchKindsById().end())
+    {
+        names.add (it->second.firstName);
+        for (const auto& [name, fn] : it->second.more) names.add (name);
+    }
+    return names;
+}
+
+int& patchKind()
+{
+    static int kind = 0;
+    return kind;
 }
 
 bool registerPatchVersion (const juce::String& id, PatchBuildFn build, PresetLoadFn load)
@@ -599,7 +676,7 @@ juce::String addPatchVersion (AquanodeModularAudioProcessor& patch, const juce::
     {
         patch.generatePatch ([&] (AquanodeModularAudioProcessor& p)
         {
-            const auto ports = e->buildPatch (p, *original, { 60, 60 });
+            const auto ports = builderFor (*e) (p, *original, { 60, 60 });
             wireToPatchIO (p, ports, effect);
             name = ports.name;
             return name;
@@ -607,7 +684,7 @@ juce::String addPatchVersion (AquanodeModularAudioProcessor& patch, const juce::
     }
     else
     {
-        const auto ports = e->buildPatch (patch, *original, freeSpot (patch));
+        const auto ports = builderFor (*e) (patch, *original, freeSpot (patch));
         wireToPatchIO (patch, ports, effect);
         name = ports.name;
     }
@@ -661,7 +738,7 @@ juce::String convertGuiToPatch (AquanodeModularAudioProcessor& patch, int guiIns
             touching.push_back (c);
 
     patch.removeModule (guiInstanceId);
-    const auto ports = e->buildPatch (patch, *original, where);
+    const auto ports = builderFor (*e) (patch, *original, where);
 
     auto reconnect = [&patch] (const std::vector<SocketRef>& targets, int fromModule, const juce::String& fromSocket,
                                bool targetsAreInputs)
@@ -727,6 +804,56 @@ int openHeldPresetInPlugin (AquanodeModularAudioProcessor& patch, int instanceId
             patch.addCable (card, c.fromSocket, c.toModule, c.toSocket);
     }
     return card;
+}
+
+std::vector<int> openPluginsBeside (AquanodeModularAudioProcessor& patch, int besideInstance,
+                                    const std::vector<std::pair<juce::String, juce::MemoryBlock>>& pluginsAndStates)
+{
+    std::vector<int> made;
+    auto* src = patch.getInstance (besideInstance);
+    if (src == nullptr)
+        return made;
+    auto where = src->position + juce::Point<int> (src->dsp->preferredModuleWidth() + 40, 0);
+    std::vector<CableInfo> touching;
+    for (const auto& c : patch.getCables())
+        if (c.fromModule == besideInstance || c.toModule == besideInstance)
+            touching.push_back (c);
+
+    for (const auto& [id, state] : pluginsAndStates)
+    {
+        auto* e = findEntry (id);
+        if (e == nullptr)
+            continue;
+        const int card = patch.addModule (e->guiTypeId, where);
+        if (card < 0)
+            continue;
+        auto* inst = patch.getInstance (card);
+        if (auto* h = dynamic_cast<HostedPluginModule*> (inst->dsp.get()))
+            if (auto* p = h->getPlugin(); p != nullptr && state.getSize() > 0)
+                p->setStateInformation (state.getData(), (int) state.getSize());
+        bool plays = false;
+        for (const auto& c : touching)
+        {
+            if (c.fromModule == besideInstance && c.fromSocket == "audioOut")
+            {
+                patch.addCable (card, "audioOut", c.toModule, c.toSocket);
+                plays = true;
+            }
+            else if (c.toModule == besideInstance && c.toSocket == "midiIn" && inst->descriptor().inputIndexOf ("midiIn") >= 0)
+                patch.addCable (c.fromModule, c.fromSocket, card, "midiIn");
+        }
+        if (! plays)
+        {
+            int out = findFirst (patch, "io.audioOut");
+            if (out < 0)
+                out = patch.addModule ("io.audioOut", where + juce::Point<int> (inst->dsp->preferredModuleWidth() + 60, 0));
+            if (out >= 0)
+                patch.addCable (card, "audioOut", out, "audioIn");
+        }
+        made.push_back (card);
+        where += juce::Point<int> (inst->dsp->preferredModuleWidth() + 40, 0);   // (a second one beside the first)
+    }
+    return made;
 }
 
 } // namespace aquanode::plugins

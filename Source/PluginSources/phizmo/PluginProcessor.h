@@ -1,4 +1,5 @@
 #pragma once
+#include "../../Engine/Tuning.h"   // (Aquanode: the patch tuning, 6.9.10)
 #include <JuceHeader.h>
 #include <vector>
 #include <cmath>
@@ -1228,6 +1229,7 @@ struct PhizmoVoice
     PhzMemo penvMemo, unisonMemo, macroMemoA, macroMemoB, pitchModMemoA, pitchModMemoB, gritMemo;
     PhzMemo panCosA, panSinA, panCosB, panSinB;
     int soundIndex = 0;      // which of the 4 Phizmo Sounds this voice plays
+    int channel = 0;         // (Aquanode) MPE: the member channel (2..16) it plays, 0 otherwise
     float  sahNoise = 0.f;   // stepped noise  (noiS)
     float  lpfNoise = 0.f;   // smoothed noise (LPF)
     double noisePhase = 0.0;
@@ -1321,7 +1323,7 @@ struct PhizmoVoice
             frameOffset = 0.0f;
             velFrameOffset = vel * velFrameAmt;
         }
-        glideTargetFreq = 440.0 * std::pow(2.0, (note - 69.0) / 12.0);
+        glideTargetFreq = ::aquanode::tuning::noteToHz((double) note);
         if (prevFreq > 0.0 && glideTime > 0.001f) {
             glideStartFreq = prevFreq;
             glideProgress = 0.0f;
@@ -1383,9 +1385,27 @@ enum class ScanMode { Forward = 0, FwdStay = 1, BackForth = 2, BwdStay = 3, Back
 
 //==============================================================================
 class PhizmoAudioProcessor : public juce::AudioProcessor,
-    public juce::AudioProcessorValueTreeState::Listener
+    public juce::AudioProcessorValueTreeState::Listener,
+    public aquanode::MpeReceiver     // (Aquanode: MPE once a member channel plays)
 {
 public:
+    void enableMpe(bool on) override { mpeOn = on; }
+    // MPE (Aquanode): channels 2..16 carry one note each, with its own bend (+-48
+    // semitones, on top of the global bend) and its own pressure (in place of the
+    // global pressure: the Pressure, tPrS and CtPr mod sources and the vibrato).
+    // Channel 1 stays the global channel.
+    bool mpeOn = false;
+    int noteChannel = 0;
+    std::array<float, 17> mpeBend {};
+    std::array<float, 17> mpePress = [] { std::array<float, 17> a {}; a.fill(-1.0f); return a; }();
+    std::array<float, 17> mpeSlide = [] { std::array<float, 17> a {}; a.fill(-1.0f); return a; }();   // (6.9.12; -1: none sent)
+    std::atomic<float> slideDepth { 0.0f };   // (6.9.15: 0 unless the MPE module says) (6.9.13) how far a full Slide moves the frame each way
+    void setSlideWavetableDepth(float eachWay) override { slideDepth.store(eachWay, std::memory_order_relaxed); }
+    bool isMember(const PhizmoVoice& v) const { return v.channel >= 2 && v.channel <= 16; }
+    float pressureOf(const PhizmoVoice& v) const
+    {
+        return isMember(v) && mpePress[(size_t) v.channel] >= 0.0f ? mpePress[(size_t) v.channel] : chanPressure.load();
+    }
     PhizmoAudioProcessor();
     ~PhizmoAudioProcessor() override;
 
@@ -1571,6 +1591,10 @@ public:
 
     // Re-runs whatever produced the slot, with a new seed for random slots.
     bool rerollSlot(int slot, juce::String& statusOut);
+
+    // 7.0.0: one of the built-in transwaves (TranswaveRemakes.h), by bank
+    // index. Origin 3; genSeed holds the index; presets carry only its name.
+    bool loadBuiltinTranswave(int slot, int index, juce::String& statusOut);
 
     // Writes the slot's rendered wavetable audio out as an ordinary .wav file.
     // Works for every origin (file, random recipe, transwavified) since a

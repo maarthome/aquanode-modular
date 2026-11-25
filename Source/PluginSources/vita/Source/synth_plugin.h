@@ -23,11 +23,35 @@
 
 class ValueBridge;
 
-class SynthPlugin : public SynthBase, public AudioProcessor, public ValueBridge::Listener {
+class SynthPlugin : public SynthBase, public AudioProcessor, public ValueBridge::Listener,
+                    public aquanode::MpeReceiver {   // (Aquanode: MPE once a member channel plays)
   public:
     static constexpr int kSetProgramWaitMilliseconds = 500;
 
-    SynthPlugin();
+    // effectOnly: Vita FX - an audio input into the effects chain (the voices still play from MIDI)
+    explicit SynthPlugin(bool effectOnly = false);
+    bool isEffectOnly() const { return effect_only_; }
+    // (Aquanode, 6.9.10) MPE: Follow Aquanode (on once a member channel plays -
+    // the default) or the preset's own MPE Enabled; the per-finger bend range
+    // 48 (MPE) or the preset's Bend range - the card's two choices
+    void enableMpe(bool on) override { aquanode_mpe_ = on; applyMpe(); }
+    void setMpePolicy(bool fromPreset, bool bendFromPreset) override {
+      mpe_from_preset_ = fromPreset;
+      bend_from_preset_ = bendFromPreset;
+      applyMpe();
+    }
+    void presetMpeLoaded() override { applyMpe(); }
+    // (Aquanode, 6.9.13) how far a full Slide moves the frame each way (0..1 of the table)
+    void setSlideWavetableDepth(float each_way) override { aq_slide_each_way_.store(each_way, std::memory_order_relaxed); }
+    std::atomic<float> aq_slide_each_way_ { 0.0f };
+
+    void applyMpe() {
+      auto& controls = getControls();
+      auto it = controls.find("mpe_enabled");
+      const bool preset = it != controls.end() && it->second->value() >= 0.5f;
+      setMpeEnabled(mpe_from_preset_ ? preset : aquanode_mpe_);
+    }
+    bool aquanode_mpe_ = false, mpe_from_preset_ = false, bend_from_preset_ = false;
     virtual ~SynthPlugin();
 
     SynthGuiInterface* getGuiInterface() override;
@@ -70,6 +94,7 @@ class SynthPlugin : public SynthBase, public AudioProcessor, public ValueBridge:
     void parameterChanged(std::string name, vital::mono_float value) override;
 
   private:
+    bool effect_only_ = false;
     ValueBridge* bypass_parameter_;
     double last_seconds_time_;
 

@@ -1,4 +1,5 @@
 /*  PluginProcessor.cpp  -  see PluginProcessor.h.  GPLv3.  */
+#include "AquanodeBanks.h"
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <cmath>
@@ -271,6 +272,8 @@ namespace vdx7 {
     Bank factoryBank(const RomStore& roms, int bank) {
         if (bank == kStarterBankIndex)
             return starterBank();
+        if (bank >= kFirstAquanodeBank && bank <= kLastBankIndex)
+            return Bank (vdx7aq::kBanks[bank - kFirstAquanodeBank]);
         bank = juce::jlimit(0, kNumFactoryBanks - 1, bank);
 
         Bank out;
@@ -282,6 +285,7 @@ namespace vdx7 {
 
     const char* factoryBankName(const RomStore& roms, int bank) {
         if (bank == kStarterBankIndex) return "STARTER";
+        if (bank >= kFirstAquanodeBank && bank <= kLastBankIndex) return vdx7aq::kNames[bank - kFirstAquanodeBank];
         if (bank < 0 || bank >= kNumFactoryBanks) return "ROM";
 
         if (usingStarterBank(roms))
@@ -720,6 +724,16 @@ namespace vdx7 {
         native_.pushMidi(bytes, len);
 
         if (backend() == Backend::Emulator && ready_.load(std::memory_order_acquire)) {
+            // MPE keeps the member channels in the buffer for the native engine;
+            // the firmware listens on channel 1 only, and the member channels'
+            // own bend and pressure would fight over its one pitch wheel
+            uint8_t moved[3];
+            if (mpe_ && len <= 3 && bytes[0] >= 0x80 && bytes[0] < 0xF0 && (bytes[0] & 0x0F) != 0) {
+                const uint8_t type = bytes[0] & 0xF0;
+                if (type == 0xE0 || type == 0xD0) return;
+                moved[0] = type; moved[1] = len > 1 ? bytes[1] : 0; moved[2] = len > 2 ? bytes[2] : 0;
+                bytes = moved;
+            }
             // The emulated HD6303 firmware maps MIDI note numbers to its internal
             // key numbers one semitone flat of what every other MIDI device (and
             // the native engine, which was calibrated against real hardware
@@ -1030,7 +1044,11 @@ void VDX7AudioProcessor::filterMidiChannel(juce::MidiBuffer& midi)
         if (n > 0 && d[0] >= 0x80 && d[0] < 0xF0) {
             if (want != 0 && (d[0] & 0x0F) != want - 1)
                 continue;
-            uint8_t b[3] = { (uint8_t)(d[0] & 0xF0), n > 1 ? d[1] : (uint8_t)0, n > 2 ? d[2] : (uint8_t)0 };
+            // MPE (Omni only): the member channels stay as they are, for the native
+            // engine's per-note bend and pressure (DX7Engine::pushMidi moves them
+            // to channel 1 for the emulator)
+            const bool keepChannel = want == 0 && engine_.mpe();
+            uint8_t b[3] = { (uint8_t)(keepChannel ? d[0] : (d[0] & 0xF0)), n > 1 ? d[1] : (uint8_t)0, n > 2 ? d[2] : (uint8_t)0 };
             channelScratch_.addEvent(b, juce::jmin(n, 3), meta.samplePosition);
         }
         else {
@@ -1361,7 +1379,7 @@ void VDX7AudioProcessor::setVoice(const vdx7::Voice& v, bool /*sendNow*/)
 
 void VDX7AudioProcessor::selectFactory(int bank, int prog)
 {
-    bank_ = juce::jlimit(0, vdx7::kStarterBankIndex, bank);
+    bank_ = juce::jlimit(0, vdx7::kLastBankIndex, bank);
     prog_ = juce::jlimit(0, 31, prog);
     userActive_ = false;
     loadVoiceIntoModel(vdx7::factoryBank(roms_, bank_).voice(prog_));

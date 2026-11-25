@@ -1,3 +1,4 @@
+#include "../../Engine/Tuning.h"   // (Aquanode: the patch tuning, 6.9.10)
 #include "AquaVibrioEngine.h"
 
 namespace aquavibrio
@@ -1634,6 +1635,7 @@ void Engine::startVoice (int v, int note, float velocity, bool retriggerEnvelope
     voice.glideNote = glide ? (wasActive ? voice.glideNote : lastNote) : (float) note;
 
     voice.note = note;
+    voice.channel = noteChannel;
     voice.velocity = velocity;
     voice.held = true;
     voice.sustained = false;
@@ -1784,7 +1786,8 @@ void Engine::keyUp (int note, float releaseVelocity)
     }
 
     for (int v = 0; v < kPolyVoices; ++v)
-        if (voices[(size_t) v].active && voices[(size_t) v].held && voices[(size_t) v].note == note)
+        if (voices[(size_t) v].active && voices[(size_t) v].held && voices[(size_t) v].note == note
+             && (noteChannel == 0 || voices[(size_t) v].channel == noteChannel))
             releaseVoice (v, releaseVelocity);
 }
 
@@ -2179,7 +2182,8 @@ void Engine::renderVoice (int v, const LayerState& L, float& outL, float& outR, 
     //-- modulation matrix
     std::array<float, (size_t) Src::Count> src {};
     src[(size_t) Src::PitchBend] = pitchBend;
-    src[(size_t) Src::ChanPressure] = channelPressure;
+    const bool member = voice.channel >= 2 && voice.channel <= 16;
+    src[(size_t) Src::ChanPressure] = member && chanPress[(size_t) voice.channel] >= 0.0f ? chanPress[(size_t) voice.channel] : channelPressure;
     src[(size_t) Src::ModWheel] = controllers[1];
     src[(size_t) Src::Breath] = controllers[2];
     src[(size_t) Src::Controller3] = controllers[3];
@@ -2241,7 +2245,8 @@ void Engine::renderVoice (int v, const LayerState& L, float& outL, float& outR, 
     //-- pitch
     const float pb = b.bendExp ? pitchBend * std::abs (pitchBend) : pitchBend;
     const float bend = pb >= 0.0f ? pb * b.bendUp : pb * b.bendDown;
-    const float common = b.transpose + m (Dest::Transpose) * 96.0f + bend + glideOffset;
+    const float common = b.transpose + m (Dest::Transpose) * 96.0f + bend + glideOffset
+                       + (member ? chanBend[(size_t) voice.channel] : 0.0f);
     const float fromMiddle = note - 60.0f;
 
     const float semis1 = b.osc1Semi + fromMiddle * (b.osc1Track - 1.0f) + common
@@ -2466,7 +2471,7 @@ void Engine::renderVoice (int v, const LayerState& L, float& outL, float& outR, 
     const float reso2Trim = 1.0f - 0.4f * res2 * res2;
 
     const float fbal = clamp01 (b.filterBalance + m (Dest::FilterBalance));
-    const float noteHz = voice.memo.noteHz.get (voice.glideNote, [] (float n) { return 440.0f * std::exp2 ((n - 69.0f) / 12.0f); });
+    const float noteHz = voice.memo.noteHz.get (voice.glideNote, [] (float n) { return (float) ::aquanode::tuning::noteToHz (n); });
     const float satAmount = (ov + 1.0f) * 0.5f;
 
     const auto sat = [&] (float& l, float& r)
@@ -3045,10 +3050,19 @@ void Engine::renderBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
         const auto msg = meta.getMessage();
         const int eventSample = juce::jlimit (0, numSamples, meta.samplePosition);
 
+        noteChannel = 0;   // (notes started while rendering - the arpeggiator's - are not MPE notes)
         for (; sample < eventSample; ++sample)
             renderOne (sample);
 
-        if (msg.isNoteOn())
+        const int ch = mpe && base().b.arpMode <= 0 ? msg.getChannel() : 1;   // (the arpeggiator's notes are not MPE notes)
+        const bool member = ch >= 2 && ch <= 16;
+        noteChannel = member ? ch : 0;
+
+        if (member && msg.isPitchWheel())
+            chanBend[(size_t) ch] = ((float) msg.getPitchWheelValue() - 8192.0f) / 8192.0f * 48.0f;
+        else if (member && msg.isChannelPressure())
+            chanPress[(size_t) ch] = (float) msg.getChannelPressureValue() / 127.0f;
+        else if (msg.isNoteOn())
             noteOn (msg.getNoteNumber(), msg.getFloatVelocity());
         else if (msg.isNoteOff())
             noteOff (msg.getNoteNumber(), msg.getFloatVelocity());
@@ -3084,6 +3098,7 @@ void Engine::renderBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
         }
     }
 
+    noteChannel = 0;
     for (; sample < numSamples; ++sample)
         renderOne (sample);
 

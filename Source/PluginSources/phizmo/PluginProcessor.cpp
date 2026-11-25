@@ -1,3 +1,4 @@
+#include "../../Engine/Tuning.h"   // (Aquanode: the patch tuning, 6.9.10)
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
@@ -1630,13 +1631,15 @@ void PhizmoAudioProcessor::addAllSlotsToZip(juce::ZipFile::Builder& zb, juce::Xm
             xml.setAttribute("slotGenSlice"  + juce::String(i), genUnpitched ? 1 : 0);
             xml.setAttribute("slotGenStatus" + juce::String(i), genStatus);
             xml.setAttribute("slotGenArch"   + juce::String(i), genArch);
+            if (origin == 3)   // 7.0.0: a built-in transwave, by name
+                xml.setAttribute("slotBuiltin" + juce::String(i), ::twremake::name((int)seed));
         }
         // A random slot is fully described by its seed and archetype, so there
         // is no reason to carry half a megabyte of audio for it. "Recipe"
         // presets like this are a couple of kilobytes and contain no sampled
         // material at all. Sampled and file-loaded slots still embed their
         // bytes, so they keep working on a machine that has never seen them.
-        if (origin == 1) continue;
+        if (origin == 1 || origin == 3) continue;   // 3: rebuilt from the built-in bank
 
         if (data.getSize() > 0)
             zb.addEntry(new juce::MemoryInputStream(data, true), 9,
@@ -1663,6 +1666,15 @@ void PhizmoAudioProcessor::restoreAllSlotsFromZip(juce::ZipFile& zip, const juce
 
         juce::String status;
         generateRandomWavetable(i, seed, frames, cycle, status, arch);
+    }
+
+    // Pass 1b (7.0.0): built-in transwaves, rebuilt from the bank by name.
+    for (int i = 0; i < NUM_SOUNDS * 2; ++i)
+    {
+        if (xml.getIntAttribute("slotOrigin" + juce::String(i), 0) != 3) continue;
+        const int idx = ::twremake::indexOf(xml.getStringAttribute("slotBuiltin" + juce::String(i)));
+        juce::String status;
+        if (idx >= 0) loadBuiltinTranswave(i, idx, status);
     }
 
     // Pass 2: slots whose audio really is embedded.
@@ -1762,13 +1774,13 @@ float PhizmoAudioProcessor::modSource(int src, const PhizmoVoice& v, float lfoVa
     case 6:  return v.fenvLevel;                            // Envelope 2 (filter)
     case 7:  return v.envLevel;                             // Envelope 3 (amp)
     case 8:  return v.velocity;                             // Velocity (tch)
-    case 9:  return juce::jlimit(0.f, 1.f, v.velocity + chanPressure.load());   // tPrS
+    case 9:  return juce::jlimit(0.f, 1.f, v.velocity + pressureOf(v));        // tPrS
     case 10: return (float)v.midiNote / 127.f;              // MIDI note
     case 11: return ((float)v.midiNote - 60.f) / 60.f;      // Keyboard (BrD), bipolar at C4
-    case 12: return chanPressure.load();                    // Pressure
+    case 12: return pressureOf(v);                          // Pressure
     case 13: return bendNorm.load();                        // Pitch wheel
     case 14: return modWheel.load();                        // Mod wheel (CtL1)
-    case 15: return juce::jlimit(0.f, 1.f, modWheel.load() + chanPressure.load()); // CtPr
+    case 15: return juce::jlimit(0.f, 1.f, modWheel.load() + pressureOf(v));     // CtPr
     case 16: return footCtl.load();                         // Foot controller
     case 17: return sustainPed.load();                      // Sustain pedal
     case 18: return sostenutoPed.load();                    // Sostenuto pedal
@@ -2172,8 +2184,18 @@ void PhizmoAudioProcessor::synthesiseVoice(PhizmoVoice& v, int vi,
     float wModA   = SP.waveModA * modSource((int)SP.waveModSrcA, v, vPosLFO) * 0.5f;
     float wModB   = SP.waveModB * modSource((int)SP.waveModSrcB, v, vPosLFO) * 0.5f;
 
-    float rawEvoPosA = juce::jlimit(0.f, 1.f, curveOutA + twMod + evoLFOAmt + keytrackMod + wStartA + wModA);
-    float rawEvoPosB = juce::jlimit(0.f, 1.f, curveOutB + twMod + evoLFOAmt + keytrackMod + wStartB + wModB);
+    // (6.9.12, Aquanode's default MPE map) a note's Slide moves where each oscillator starts in
+    // its table - the middle of the key where it is set, up or down a quarter - while no Wave Mod
+    // source is routed to that oscillator
+    float slideA = 0.f, slideB = 0.f;
+    if (isMember(v) && mpeSlide[(size_t) v.channel] >= 0.f)
+    {
+        const float off = (mpeSlide[(size_t) v.channel] - 0.5f) * 2.0f * slideDepth.load(std::memory_order_relaxed);
+        if (std::abs(SP.waveModA) < 1.0e-4f) slideA = off;
+        if (std::abs(SP.waveModB) < 1.0e-4f) slideB = off;
+    }
+    float rawEvoPosA = juce::jlimit(0.f, 1.f, curveOutA + twMod + evoLFOAmt + keytrackMod + wStartA + wModA + slideA);
+    float rawEvoPosB = juce::jlimit(0.f, 1.f, curveOutB + twMod + evoLFOAmt + keytrackMod + wStartB + wModB + slideB);
 
     // --- Frame Snap: quantise frame position to N discrete steps ---
     // frameSnap=0 to off; frameSnap=1 to coarsest (8 steps). Skews toward powers of 2.
@@ -2513,6 +2535,7 @@ void PhizmoAudioProcessor::startVoice(int note, float vel)
             && voices[si].active
             && voices[si].envStage != PhizmoVoice::Env::Release;
         voices[si].soundIndex = snd;
+        voices[si].channel = noteChannel;
         voices[si].noteOn(note, vel, isMono ? lastNoteFreq : 0.0,
                           isMono ? glideTime : 0.f, velAmt, carry, carryPh, legato);
         if (!legato) applyEvoStart(si, snd);   // RAND/LOCK/FIX start override
@@ -2520,7 +2543,7 @@ void PhizmoAudioProcessor::startVoice(int note, float vel)
         voicePosLFOPhase[si] = (double)((note * 7) & 0xF) / 16.0;
     }
     monoActive = isMono;
-    lastNoteFreq = 440.0 * std::pow(2.0, (note - 69.0) / 12.0);
+    lastNoteFreq = ::aquanode::tuning::noteToHz((double) note);
 }
 
 void PhizmoAudioProcessor::stopVoice(int note)
@@ -2529,7 +2552,8 @@ void PhizmoAudioProcessor::stopVoice(int note)
     // stages as programmed (manual, Envelope Modes).
     if (pEnvMode && (int)pEnvMode->load() == 1) return;
     for (auto& v : voices)
-        if (v.active && v.midiNote == note && v.envStage != PhizmoVoice::Env::Release)
+        if (v.active && v.midiNote == note && v.envStage != PhizmoVoice::Env::Release
+            && (noteChannel == 0 || v.channel == noteChannel))
             v.noteOff();
 }
 
@@ -2560,6 +2584,25 @@ void PhizmoAudioProcessor::handleMidiAndArp(juce::MidiBuffer& midiMessages, int 
         // arpeggiator or bypass it and sound the Preset directly.
         const bool toArp = arpActive
             && (pArpKeyboard == nullptr || pArpKeyboard->load() > 0.5f);
+
+        const int mch = mpeOn && ! toArp ? msg.getChannel() : 1;
+        const bool member = mch >= 2 && mch <= 16;
+        noteChannel = member ? mch : 0;
+        if (member && msg.isPitchWheel())
+        {
+            mpeBend[(size_t) mch] = ((float)msg.getPitchWheelValue() - 8192.f) / 8192.f * 48.f;
+            continue;
+        }
+        if (member && msg.isChannelPressure())
+        {
+            mpePress[(size_t) mch] = (float)msg.getChannelPressureValue() / 127.f;
+            continue;
+        }
+        if (member && msg.isController() && msg.getControllerNumber() == 74)
+        {
+            mpeSlide[(size_t) mch] = (float)msg.getControllerValue() / 127.f;   // (6.9.12) a note's own Slide
+            continue;
+        }
 
         if (msg.isNoteOn())
         {
@@ -2684,6 +2727,13 @@ bool PhizmoAudioProcessor::renderVoiceBuses(int numSamples, float* outL, float* 
     const double vib = (double)globalLfo
                      * ((double)modWheel.load() + (double)chanPressure.load() * 0.5) * 0.5;
     double pitchMult = std::pow(2.0, ((double)(blockPitchLFO * pitchLFODep) + bendSemis + vib) / 12.0);
+    // MPE: a member channel's note adds its own bend, and its own pressure opens the vibrato
+    auto voicePitchMult = [&] (const PhizmoVoice& v) -> double
+    {
+        if (! isMember(v)) return pitchMult;
+        const double vibV = (double)globalLfo * ((double)modWheel.load() + (double)pressureOf(v) * 0.5) * 0.5;
+        return std::pow(2.0, ((double)(blockPitchLFO * pitchLFODep) + bendSemis + (double)mpeBend[(size_t) v.channel] + vibV) / 12.0);
+    };
 
     // Update display playhead from first active voice
     for (auto& v : voices)
@@ -2768,6 +2818,9 @@ bool PhizmoAudioProcessor::renderVoiceBuses(int numSamples, float* outL, float* 
             }
         };
 
+        double vPitchMult[MAX_VOICES];   // (MPE: each member channel's note its own)
+        for (int vi = 0; vi < MAX_VOICES; ++vi) vPitchMult[vi] = voicePitchMult(voices[vi]);
+
         for (int s = 0; s < N; ++s)
         {
             for (int snd = 0; snd < NUM_SOUNDS; ++snd)
@@ -2788,7 +2841,7 @@ bool PhizmoAudioProcessor::renderVoiceBuses(int numSamples, float* outL, float* 
                 float vL = 0.f, vR = 0.f, vBL = 0.f, vBR = 0.f;
                 const int sIdx = juce::jlimit(0, NUM_SOUNDS - 1, voices[vi].soundIndex);
                 if ((soundMask & (1u << sIdx)) == 0) continue;
-                synthesiseVoice(voices[vi], vi, blockPosLFO, pitchMult, vL, vR, vBL, vBR,
+                synthesiseVoice(voices[vi], vi, blockPosLFO, vPitchMult[vi], vL, vR, vBL, vBR,
                                 blkS[sIdx], soundParams[sIdx]);
                 const float lg = soundParams[sIdx].layerGain;
                 vL *= lg; vR *= lg; vBL *= lg; vBR *= lg;

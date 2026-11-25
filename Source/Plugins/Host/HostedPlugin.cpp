@@ -1,3 +1,4 @@
+#include <map>
 #include "HostedPlugin.h"
 #include "PluginCatalog.h"
 
@@ -17,10 +18,52 @@ ModuleDescriptor makeHostedDescriptor (const HostedSpec& spec)
 
     if (spec.audioIn)  d.sockets.push_back (audioIn ("audioIn", "Audio In"));
     if (spec.sideIn)   d.sockets.push_back (audioIn ("sideIn", spec.sideInLabel));
-    if (spec.midiIn)   d.sockets.push_back (midiIn ("midiIn", "Midi In"));
+    if (spec.midiIn)   d.sockets.push_back (midiIn ("midiIn", "MIDI In"));
     d.sockets.push_back (audioOut ("audioOut", "Audio Out"));
-    if (spec.midiOut)  d.sockets.push_back (midiOut ("midiOut", "Midi Out"));
+    if (spec.midiOut)  d.sockets.push_back (midiOut ("midiOut", "MIDI Out"));
+    d.sockets.push_back (tempoIn());   // (6.9.10: tempo per lane - its play head's BPM)
+    // the block the plugin runs in: Global (the top bar's Plugin Block) or its own
+    d.params.push_back (makeCombo ("blockSize", "Block", HostedPluginModule::blockChoices(), 0, 0, 2).noMod().hide().whenMissing (0.0f));   // (the card's Block pill)
+
+    // 6.7.0: the synths far from the others' level (measured: a C4 at velocity
+    // 100, the loudest 100 ms against about -16 dBFS) meet them on new cards;
+    // a saved patch keeps the level it had (the engine applies the trim on
+    // the card's cables, like every module's Output Trim)
+    static const std::map<juce::String, float> levelTrims {
+        { "tabla", 12.0f }, { "am20", 10.0f }, { "aquamassif", 7.0f }, { "reflex", -6.0f } };
+    if (const auto it = levelTrims.find (spec.pluginId); it != levelTrims.end())
+        d.params.push_back (makeOutputTrim (it->second));
+
+    // (6.9.10) Vita's card: MPE on with Aquanode's MPE (as before) or as the
+    // preset says, and the per-finger bend range 48 or the preset's - Preset
+    // and Preset keep a mono, range-2 preset like Abyssal Pulse as it was made
+    if (spec.pluginId == "vita")
+    {
+        d.params.push_back (makeCombo ("mpeMode", "MPE", { "Follow Aquanode", "Preset" }, 0, 0, 3).noMod());
+        d.params.push_back (makeCombo ("bendRange", "Bend Range", { "48", "Preset" }, 0, 0, 2).noMod());
+    }
     return d;
+}
+
+const juce::StringArray& HostedPluginModule::blockChoices()
+{
+    // (6.9.10: 1, 2, 4 and 8 added - patches keep their choice by name)
+    static const juce::StringArray c { "Global", "1", "2", "4", "8", "16", "32", "64", "128", "256", "512" };
+    return c;
+}
+
+std::atomic<int>& HostedPluginModule::globalBlockSize()
+{
+    static std::atomic<int> size { 128 };
+    return size;
+}
+
+int HostedPluginModule::wantedBlock() const
+{
+    const int c = pBlock >= 0 ? (int) std::lround (param (pBlock)) : 0;
+    static const int sizes[] = { 0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512 };   // (as blockChoices)
+    if (c >= 1 && c <= 10) return juce::jmin (kMaxBlockSize, sizes[c]);
+    return juce::jlimit (1, kMaxBlockSize, globalBlockSize().load (std::memory_order_relaxed));
 }
 
 //==============================================================================
@@ -47,8 +90,8 @@ public:
             addAndMakeVisible (editor.get());
             editor->setTopLeftPosition (0, 0);
             editor->addComponentListener (this);
-            setSize (editor->getWidth(), editor->getHeight());
             owner.noteEditorSize (editor->getWidth(), editor->getHeight());
+            applyCardScale();
         }
         else
         {
@@ -95,6 +138,7 @@ public:
             return nullptr;
         lent = true;
         removeChildComponent (editor.get());
+        editor->setTransform ({});   // (the full view shows it 1:1, scaled its own way)
         repaint();
         return editor.get();
     }
@@ -104,13 +148,26 @@ public:
         if (editor == nullptr || ! lent)
             return;
         lent = false;
-        editor->setTransform ({});
         addAndMakeVisible (editor.get());
         editor->setTopLeftPosition (0, 0);
+        applyCardScale();
         repaint();
     }
 
 private:
+    // the editor at its card scale (HostedPluginModule::cardScaleFor), this
+    // holder the size it then covers
+    void applyCardScale()
+    {
+        if (editor == nullptr)
+            return;
+        const float s = HostedPluginModule::cardScaleFor (editor->getWidth(), editor->getHeight());
+        if (! lent)
+            editor->setTransform (juce::AffineTransform::scale (s));
+        setSize (juce::jmax (1, juce::roundToInt ((float) editor->getWidth() * s)),
+                 juce::jmax (1, juce::roundToInt ((float) editor->getHeight() * s)));
+    }
+
     void componentMovedOrResized (juce::Component& c, bool, bool wasResized) override
     {
         if (! wasResized || &c != editor.get())
@@ -118,6 +175,8 @@ private:
 
         if (auto* m = dynamic_cast<HostedPluginModule*> (module.get()))
             m->noteEditorSize (c.getWidth(), c.getHeight());
+        if (! lent)
+            applyCardScale();
 
         // the card re-measures itself - after this callback, never inside it
         juce::Component::SafePointer<HostedEditorHolder> safe (this);
@@ -180,15 +239,20 @@ void HostedPluginModule::prepare (double newSampleRate)
     outs = plugin->getTotalNumOutputChannels();
 
     const int channels = juce::jmax (1, mainIns + sideChannels, outs);
-    io.setSize (channels, kBlockSize, false, true, false);
+    pBlock = paramIndex ("blockSize");
+    pMpeMode = paramIndex ("mpeMode");     // (Vita's card only)
+    pBendRange = paramIndex ("bendRange");
+    lastMpePolicy = -1;
+    blockSize = wantedBlock();
+    io.setSize (channels, kMaxBlockSize, false, true, false);
     io.clear();
 
     {
         const juce::ScopedLock sl (plugin->getCallbackLock());
         if (prepared)
             plugin->releaseResources();
-        plugin->setRateAndBufferSizeDetails (newSampleRate, kBlockSize);
-        plugin->prepareToPlay (newSampleRate, kBlockSize);
+        plugin->setRateAndBufferSizeDetails (newSampleRate, kMaxBlockSize);
+        plugin->prepareToPlay (newSampleRate, kMaxBlockSize);
     }
 
     midiInBuffer.ensureSize (2048);
@@ -215,6 +279,23 @@ void HostedPluginModule::reset()
 void HostedPluginModule::blockStart()
 {
     samplesThisHostBlock = 0;
+
+    // (6.9.12) the default MPE map's Slide depth, to a plugin that plays MPE
+    if (midiControls != nullptr)
+        if (auto* r = dynamic_cast<aquanode::MpeReceiver*> (plugin.get()))
+            r->setSlideWavetableDepth (midiControls->slideWavetableDepth);
+
+    // (6.9.10) Vita's card: its MPE and bend-range choices, when they move
+    if (pMpeMode >= 0)
+    {
+        const int policy = (param (pMpeMode) > 0.5f ? 1 : 0) | (pBendRange >= 0 && param (pBendRange) > 0.5f ? 2 : 0);
+        if (policy != lastMpePolicy)
+            if (auto* r = dynamic_cast<aquanode::MpeReceiver*> (plugin.get()))
+            {
+                r->setMpePolicy ((policy & 1) != 0, (policy & 2) != 0);
+                lastMpePolicy = policy;
+            }
+    }
 
     if (! rollCommandSeen || hostTransport.rollCommand != seenRollCommand)
     {
@@ -251,7 +332,7 @@ void HostedPluginModule::setSideChainEnabled (bool enabled)
             plugin->releaseResources();
             bus->enable (enabled);
             sideIns = enabled ? juce::jmin (sideChannels, plugin->getChannelCountOfBus (true, 1)) : 0;
-            plugin->prepareToPlay (sampleRate, kBlockSize);
+            plugin->prepareToPlay (sampleRate, kMaxBlockSize);
         }
     }
     sideRelayoutPending = false;
@@ -259,11 +340,42 @@ void HostedPluginModule::setSideChainEnabled (bool enabled)
 
 int HostedPluginModule::latencySamples() const
 {
-    return kBlockSize + (plugin != nullptr ? juce::jmax (0, plugin->getLatencySamples()) : 0);
+    return blockSize + (plugin != nullptr ? juce::jmax (0, plugin->getLatencySamples()) : 0);
 }
 
 void HostedPluginModule::rawMidiMessage (const juce::MidiMessage& message)
 {
+    // a note on a member channel - or its Slide, Pressure or Bend, which an MPE controller sends
+    // just before the note: a plugin that plays MPE switches it on (6.9.13: else the first
+    // note's Slide went missing)
+    if (! mpeOn && message.getChannel() >= 2
+        && (message.isNoteOn() || message.isPitchWheel() || message.isChannelPressure() || message.isControllerOfType (74)))
+        if (auto* r = dynamic_cast<aquanode::MpeReceiver*> (plugin.get()))
+        {
+            r->enableMpe (true);
+            mpeOn = true;
+            // (6.9.15) a bend it heard before (as one channel) stays on its pitch wheel otherwise:
+            // every channel's wheel back to the middle first
+            for (int ch = 1; ch <= 16; ++ch)
+                midiInBuffer.addEvent (juce::MidiMessage::pitchWheel (ch, 8192), pos);
+        }
+
+    // (6.9.15) a member channel's next note starts unbent unless its own bend comes first
+    // (a released note's last bend stayed on the channel, and the next note there - from
+    // MIDI Add, or another finger - began detuned)
+    if (const int ch = message.getChannel(); ch >= 2 && ch <= 16)
+    {
+        auto& st = memberState[(size_t) ch];
+        if (message.isPitchWheel()) st.resetDue = false;
+        else if (message.isNoteOff()) { if (st.held > 0) --st.held; if (st.held == 0) st.resetDue = true; }
+        else if (message.isNoteOn())
+        {
+            if (st.resetDue && st.held == 0) midiInBuffer.addEvent (juce::MidiMessage::pitchWheel (ch, 8192), pos);
+            st.resetDue = false;
+            ++st.held;
+        }
+    }
+
     midiInBuffer.addEvent (message, pos);
 }
 
@@ -308,10 +420,16 @@ void HostedPluginModule::processSample (const StereoFrame* inputs, StereoFrame* 
     ++samplesThisHostBlock;
     ++sampleCounter;
 
-    if (++pos >= kBlockSize)
+    if (++pos >= blockSize)
     {
         pos = 0;
         runBlock();
+        // the Block menu (or the top bar's) changed: the next block runs at the new size
+        if (const int want = wantedBlock(); want != blockSize)
+        {
+            for (auto& ch : outFifo) std::fill (ch.begin() + juce::jmin (blockSize, want), ch.end(), 0.0f);
+            blockSize = want;
+        }
     }
 }
 
@@ -320,11 +438,14 @@ void HostedPluginModule::updatePlayHead()
     juce::AudioPlayHead::PositionInfo info;
 
     // where this little block started, relative to the host's block
-    const int offset = samplesThisHostBlock - kBlockSize;
+    const int offset = samplesThisHostBlock - blockSize;
     bool fromHost = false;
 
-    if (hostPlayHead != nullptr)
-        if (auto host = hostPlayHead->getPosition())
+    // (a play head without a tempo - the standalone app's and Android's audio player
+    // has one that only counts samples - does not count: the plugin gets the patch's
+    // own tempo and clock then, as everything else in the patch does)
+    if (hostPlayHead != nullptr && ! tempoFromLane())   // (6.9.14: a fed Tempo In wins over the host's tempo)
+        if (auto host = hostPlayHead->getPosition(); host && host->getBpm() && *host->getBpm() > 0.0)
         {
             info = *host;
             fromHost = true;
@@ -339,11 +460,11 @@ void HostedPluginModule::updatePlayHead()
 
     if (! fromHost)
     {
-        // standalone / Android: the patch's own tempo, a free-running clock
-        const double secs = (double) (sampleCounter - kBlockSize) / sampleRate;
+        // standalone / Android (or a host without a tempo): the patch's own tempo, a free-running clock
+        const double secs = (double) (sampleCounter - blockSize) / sampleRate;
         info.setBpm (tempoBpm);
         info.setTimeSignature (juce::AudioPlayHead::TimeSignature { 4, 4 });
-        info.setTimeInSamples (sampleCounter - kBlockSize);
+        info.setTimeInSamples (sampleCounter - blockSize);
         info.setTimeInSeconds (secs);
         info.setPpqPosition (secs * tempoBpm / 60.0);
         info.setIsPlaying (hostTransport.isPlaying);
@@ -362,12 +483,23 @@ void HostedPluginModule::runBlock()
     // anything beyond the plugin's own channels must not leak into its output
     const int usedIns = mainIns + sideIns.load (std::memory_order_relaxed);
     for (int ch = usedIns; ch < io.getNumChannels(); ++ch)
-        io.clear (ch, 0, kBlockSize);
+        io.clear (ch, 0, blockSize);
 
     {
         const juce::ScopedTryLock sl (plugin->getCallbackLock());
         if (sl.isLocked() && ! plugin->isSuspended())
-            plugin->processBlock (io, midiInBuffer);
+        {
+            // this block's samples of the buffer (it is sized for the largest block)
+            juce::AudioBuffer<float> block (io.getArrayOfWritePointers(), io.getNumChannels(), blockSize);
+            if (aquanode::cpuMeterActive())   // (CPU / RAM module: its exact time)
+            {
+                const auto t0 = std::chrono::steady_clock::now();
+                plugin->processBlock (block, midiInBuffer);
+                cpuNs += (double) std::chrono::duration_cast<std::chrono::nanoseconds> (std::chrono::steady_clock::now() - t0).count();
+            }
+            else
+                plugin->processBlock (block, midiInBuffer);
+        }
         else
             io.clear();
     }
@@ -400,7 +532,7 @@ void HostedPluginModule::runBlock()
 
     // the processed block becomes the next block's output
     const int numOut = juce::jmin (outs, io.getNumChannels());
-    for (int i = 0; i < kBlockSize; ++i)
+    for (int i = 0; i < blockSize; ++i)
     {
         float l = numOut > 0 ? io.getSample (0, i) : 0.0f;
         float r = numOut > 1 ? io.getSample (1, i) : l;
@@ -446,12 +578,13 @@ void HostedPluginModule::noteEditorSize (int w, int h)
 
 int HostedPluginModule::preferredModuleWidth() const
 {
-    return editorW.load() + 20;     // the card's 10 px margins either side
+    // the card's 10 px margins either side
+    return juce::roundToInt ((float) editorW.load() * cardScale()) + 20;
 }
 
 int HostedPluginModule::extraContentHeight() const
 {
-    return plugin->hasEditor() ? editorH.load() : 0;
+    return plugin->hasEditor() ? juce::roundToInt ((float) editorH.load() * cardScale()) : 0;
 }
 
 juce::String HostedPluginModule::saveCustomState() const

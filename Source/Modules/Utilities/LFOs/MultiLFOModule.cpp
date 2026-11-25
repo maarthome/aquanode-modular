@@ -243,7 +243,8 @@ void MultiLFOModule::blockStart()
         if (audioTable != published)
             audioTable = published;
     }
-    const double bpm = hostTransport.hasBpm ? hostTransport.bpm : (double) param (pBpm);
+    const double bpm = tempoFromLane() ? tempoBpm   // (6.9.10: a lane's tempo wins)
+                     : hostTransport.hasBpm ? hostTransport.bpm : (double) param (pBpm);
     beatsPerSecond = juce::jmax (1.0, bpm) / 60.0;
 }
 
@@ -375,7 +376,8 @@ static ModuleDescriptor multiLfoDescriptor()
     d.sidebarOrder = 2;
     d.sockets = {
         modOut ("modOut", "Mod Out"),
-        modOut ("invOut", "Inv Out")
+        modOut ("invOut", "Inv Out"),
+        tempoIn()   // (6.9.10: tempo per lane)
     };
     d.params = {
         makeCombo       ("shape",    "Shape",    MultiLFOModule::shapeChoices(), 0, 0, 3).noMod(),   // (the table is rebuilt)
@@ -384,8 +386,8 @@ static ModuleDescriptor multiLfoDescriptor()
         makeSteppedList ("division", "Division", MultiLFOModule::divisionChoices(), 5, 1),
         makeRotary      ("rate",     "Rate",     0.02f, 40.0f, 2.0f, 1, "Hz", true).visibleWhen ("sync", 3.0f),
         makeCombo       ("mode",     "Mode",     { "Retrigger", "One Shot" }, 0, 2, 2),
-        makeRotary      ("min",      "Min",      0.0f, 1.0f, 0.0f, 2),
-        makeRotary      ("max",      "Max",      0.0f, 1.0f, 1.0f, 2),
+        makeRotary      ("min",      "Low",      0.0f, 1.0f, 0.0f, 2),
+        makeRotary      ("max",      "High",      0.0f, 1.0f, 1.0f, 2),
         makeRotary      ("smooth",   "Smooth",   0.0f, 50.0f, 2.0f, 3, "ms"),
         makeRotary      ("phase",    "Phase",    0.0f, 0.99f, 0.0f, 3),
         makeRotary      ("bpm",      "BPM",      40.0f, 240.0f, 140.0f, 3, {}, false, 1.0f).noMod()
