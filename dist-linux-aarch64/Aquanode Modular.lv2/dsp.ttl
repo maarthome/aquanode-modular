@@ -227,7 +227,7 @@ plug:output_group_1
 	a lv2:InstrumentPlugin ;
 	doap:name "Aquanode Modular" ;
 	doap:description "Aquanode Modular" ;
-	lv2:minorVersion 3 ;
+	lv2:minorVersion 0 ;
 	lv2:microVersion 0 ;
 	doap:maintainer [
 		a foaf:Person ;
@@ -237,7 +237,7 @@ plug:output_group_1
 	] ;
 	doap:release [
 		a doap:Version ;
-		doap:revision "6.3.0" ;
+		doap:revision "7.0.0" ;
 	] ;
 	lv2:optionalFeature
 		lv2:hardRTCapable ;
