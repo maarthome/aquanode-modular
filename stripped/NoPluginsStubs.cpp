@@ -13,6 +13,8 @@ namespace aquanode::plugins
 {
     std::vector<CatalogEntry>& catalog()                            { static std::vector<CatalogEntry> none; return none; }
     CatalogEntry* findEntry (const juce::String&)                   { return nullptr; }
+    juce::StringArray patchKinds (const juce::String&)              { return {}; }
+    int& patchKind()                                                { static int kind = 0; return kind; }
     bool registerAudioAccess (const juce::String&, AudioAccess)     { return false; }
     const AudioAccess* audioAccessFor (const juce::String&)         { return nullptr; }
     int addGuiVersion (AquanodeModularAudioProcessor&, const juce::String&, juce::Point<int>)                  { return -1; }

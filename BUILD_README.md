@@ -75,7 +75,7 @@ The LV2 and VST3 headers come with JUCE, so no `lv2-dev` package is needed.
 
 ### Memory
 
-The build is heavy (289 source files, including a full copy of the Vital synth). On a Pi with 4 GB, use `build_aquanode.sh`, which adds a temporary 6 GB swap file for the duration of the build. It needs about 7 GB of free disk space.
+The build is heavy (about 350 source files, including a full copy of the Vital synth). On a Pi with 4 GB, use `build_aquanode.sh`, which adds a temporary 6 GB swap file for the duration of the build. It needs about 7 GB of free disk space.
 
 ## Building
 
@@ -177,7 +177,7 @@ How it works and what to know:
 - The full build must exist first (`./build_aquanode.sh`). A stripped plugin compiles only the engine and takes the code of its modules out of the full build's library, so it builds in minutes.
 - Nothing of the full build is changed, recompiled or removed. Stripped plugins have their own project (`stripped/CMakeLists.txt`) and their own build folder (`build-stripped-aarch64/`), and no original source file is edited.
 - `tools/make_stripped.py` reads the patch and writes a module list naming only the modules in it; the linker then leaves everything else out.
-- Supported: the building-block modules (oscillators, filters, effects, utilities) and the 41 built-in synths and effects (Vita, the DX7, Massif, Tidebreeze and so on), as their cards and as their patch versions. A built-in plugin comes in whole, so a patch with Vita gives a larger plugin than one made of building blocks. Not supported: the Fruit DAW workspace, a nested Aquanode Modular, and external VST3 plugins.
+- Supported: the building-block modules (oscillators, filters, effects, utilities) and the 45 built-in synths and effects (Vita, the DX7, Massif, Tidebreeze and so on), as their cards and as their patch versions. A built-in plugin comes in whole, so a patch with Vita gives a larger plugin than one made of building blocks. Not supported: the Fruit DAW workspace, a nested Aquanode Modular, and external VST3 plugins.
 - Host parameters: JUCE's LV2 format publishes parameters as LV2 "patch parameters", not as control ports. Hosts that only list control ports, such as the Zynthian's parameter screens, show no parameters; this is the same for the full plugin. Use the plugin's window there.
 
 ## Results

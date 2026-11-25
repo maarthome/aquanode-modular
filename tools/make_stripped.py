@@ -26,7 +26,8 @@ MTS_CLIENT = "Source/PluginSources/virtualdx7/Source/External/MTS-ESP/libMTSClie
 
 REGISTER = re.compile(r"^\s*AQUANODE_REGISTER_MODULE\s*\(\s*(\w+)\s*,", re.M)
 DEFINE_PLUGIN = re.compile(r'^\s*AQP_DEFINE_PLUGIN\s*\(\s*(\w+)\s*,\s*"([^"]+)"', re.M)
-TYPE_LITERAL = re.compile(r'typeId\s*=\s*"([^"]+)"')
+# typeId = "fx.delay";  or, for the piano models,  makeDescriptor ("osc.piano", ...)
+TYPE_LITERAL = re.compile(r'(?:typeId\s*=|makeDescriptor\s*\()\s*"([^"]+)"')
 INCLUDE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.M)
 
 
